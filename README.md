@@ -37,6 +37,10 @@ Home Manager and nixpkgs, writes `provenance/` and `CHANGELOG.md`, makes one rel
 tag. It never pushes. It prints the two push commands. The release commit needs a GREEN `testee verify` before you
 push it.
 
+## Contributing
+
+Pull requests are welcome, but the author does not promise a review.
+
 ## Author
 
 Bullish-Intelligence <242310653+Bullish-Intelligence@users.noreply.github.com>
