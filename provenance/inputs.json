@@ -1,0 +1,40 @@
+{
+  "checks": [
+    "PASS reference T2 with the hook off equals the spike",
+    "PASS reference T2 with the hook on is the recorded drvPath",
+    "PASS reference T2: the hook changes the drvPath",
+    "PASS reference T2: the home holds the minix package of its flake",
+    "PASS reference T2: the minix package changes the drvPath",
+    "PASS reference T6prog with the hook off equals the spike",
+    "PASS reference T6prog with the hook on is the recorded drvPath",
+    "PASS reference T6prog: the hook changes the drvPath",
+    "PASS reference T6prog: the home holds the minix package of its flake",
+    "PASS reference T6prog: the minix package changes the drvPath",
+    "PASS pair: a mismatch names both pairs",
+    "PASS pair: a match gives null",
+    "PASS pair: pynix_hm from another nixpkgs stops the evaluation",
+    "PASS pair: the same stub evaluates with the real pynix"
+  ],
+  "commit": "05f8d62074fdc990c6297eeee552c2b6545993f7",
+  "home-manager": {
+    "narHash": "sha256-KuLePuhwJM9NLt/gTLHzXaOoSZKGoB3m7NfXjiQ98HY=",
+    "rev": "fae6e9e42c3b762ab47635cddcfaf6f52374a61b"
+  },
+  "nixpkgs": {
+    "lastModified": 1791456040,
+    "narHash": "sha256-H83yz/do+hjOO0uujHyH8RgtIQP2v7Mw+cLwcZK/xKc=",
+    "rev": "e7439b6b14ad3cc35d05608ebca9bce01a25f5f8"
+  },
+  "previous": null,
+  "pynix": {
+    "narHash": "sha256-NRNvZQo1hU5h1Qsx8ankzMMn8/xbOdFurRritRLzJ00=",
+    "rev": "db40121c9fcff3680c4dde9105c61e6e65f7c025",
+    "tag": "pynix-v0.3.0"
+  },
+  "pynix_hm": {
+    "home-manager": "fae6e9e42c3b762ab47635cddcfaf6f52374a61b",
+    "nixpkgs": "e7439b6b14ad3cc35d05608ebca9bce01a25f5f8"
+  },
+  "tag": "v0.3.0",
+  "version": "0.3.0"
+}
