@@ -1,0 +1,60 @@
+[project]
+name = "minix"
+version = "0.3.0"
+description = "The home layer of Basix v2: one typed home.py, applied as a standalone Home Manager configuration."
+readme = "README.md"
+requires-python = ">=3.13"
+
+authors = [
+  { name = "Bullish-Intelligence", email = "242310653+Bullish-Intelligence@users.noreply.github.com" },
+]
+
+# pydantic 2.13.4 is the version of the pinned nixpkgs: the compiler package takes Pydantic from nixpkgs (010-D2).
+# `pynix` is not a dependency. Nix and the development shell read it from the lock of the flake (010-D8).
+dependencies = [
+  "pydantic==2.13.4",
+  "typer>=0.15.4",
+]
+
+[project.scripts]
+minix = "minix.cli:app"
+
+# The dev group declares the check tools (pytest, ruff, ty) directly: Testee
+# carries none of them. `nix/testee.nix` declares the checks.
+# `testee.prepare` runs `uv sync --locked`, so keep `uv.lock` in Git.
+[dependency-groups]
+dev = [
+  "pytest",
+  "ruff==0.16.10",
+  "ty==0.0.84",
+]
+
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/minix", "src/minix_config"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+src = ["src"]
+# The fixtures are entries for `home.py`: the tests compile them, and some line numbers are part of the checks.
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# `ruff format` owns the line length. Comments and strings of the proven spike code stay as they are.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# The `if TYPE_CHECKING:` signatures show the defaults of the fields to a type checker; they never run.
+"src/minix_config/*.py" = ["B006"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ty.src]
+exclude = ["tests/fixtures"]

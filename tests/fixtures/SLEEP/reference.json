@@ -1,0 +1,62 @@
+{
+ "fragments": [
+  {
+   "path": [
+    "systemd",
+    "user"
+   ],
+   "source": "home.py:7 (Service)",
+   "value": {
+    "services": {
+     "web": {
+      "Service": {
+       "ExecStart": {
+        "__nixdantic_ref__": {
+         "kind": "text",
+         "parts": [
+          {
+           "__nixdantic_ref__": {
+            "attr": "coreutils",
+            "kind": "package"
+           }
+          },
+          "/bin/sleep",
+          " 5"
+         ]
+        }
+       }
+      },
+      "Unit": {
+       "Description": "minix service web"
+      }
+     }
+    }
+   },
+   "version": 1
+  },
+  {
+   "path": [
+    "systemd",
+    "user"
+   ],
+   "source": "home.py:7 (Service)",
+   "value": {
+    "services": {
+     "web": {
+      "Install": {
+       "WantedBy": [
+        "default.target"
+       ]
+      },
+      "Service": {
+       "Restart": "on-failure"
+      }
+     }
+    }
+   },
+   "version": 1
+  }
+ ],
+ "source_sha256": "180126ddabbd2ee31dd0a1fc17385291da615b6deb26d0fa60dd2e80efedb2bd",
+ "user": "learner"
+}

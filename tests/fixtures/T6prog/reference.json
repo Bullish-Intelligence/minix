@@ -1,0 +1,80 @@
+{
+ "fragments": [
+  {
+   "path": [
+    "home"
+   ],
+   "source": "home.py:5 (Program)",
+   "value": {
+    "packages": [
+     {
+      "__nixdantic_ref__": {
+       "attr": "python3",
+       "kind": "package"
+      }
+     }
+    ]
+   },
+   "version": 1
+  },
+  {
+   "path": [
+    "systemd",
+    "user"
+   ],
+   "source": "home.py:7 (Service)",
+   "value": {
+    "services": {
+     "web": {
+      "Service": {
+       "ExecStart": {
+        "__nixdantic_ref__": {
+         "kind": "text",
+         "parts": [
+          {
+           "__nixdantic_ref__": {
+            "attr": "python3",
+            "kind": "exe"
+           }
+          },
+          " -m",
+          " http.server",
+          " 8080"
+         ]
+        }
+       }
+      },
+      "Unit": {
+       "Description": "minix service web"
+      }
+     }
+    }
+   },
+   "version": 1
+  },
+  {
+   "path": [
+    "systemd",
+    "user"
+   ],
+   "source": "home.py:7 (Service)",
+   "value": {
+    "services": {
+     "web": {
+      "Install": {
+       "WantedBy": [
+        "default.target"
+       ]
+      },
+      "Service": {
+       "Restart": "on-failure"
+      }
+     }
+    }
+   },
+   "version": 1
+  }
+ ],
+ "source_sha256": "8299d7b9da4ac5ebcc57a05ab2fc7c721ba53f4ebde954998fc8599db4243abb",
+ "user": "learner"
+}

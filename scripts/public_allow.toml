@@ -1,0 +1,25 @@
+# Reviewed exceptions of scripts/check_public.py. Each entry needs a reason.
+
+[[allow]]
+path = "scripts/apply_vm.py"
+shape = "home folder"
+text = "/home/learner/"
+reason = "the invented learner account of the test VM"
+
+[[allow]]
+path = "src/minix_config/_components.py"
+shape = "home folder"
+text = "/home/YOU/"
+reason = "a placeholder in an error message"
+
+[[allow]]
+path = "tests/test_cmd_seedlock.py"
+shape = "home folder"
+text = "/home/ada/"
+reason = "an invented account in a test input"
+
+[[allow]]
+path = "tests/test_config_compile.py"
+shape = "home folder"
+text = "/home/YOU/"
+reason = "a placeholder in an expected error message"

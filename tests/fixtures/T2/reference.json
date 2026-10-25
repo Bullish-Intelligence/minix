@@ -1,0 +1,23 @@
+{
+ "fragments": [
+  {
+   "path": [
+    "home"
+   ],
+   "source": "home.py:5 (Program)",
+   "value": {
+    "packages": [
+     {
+      "__nixdantic_ref__": {
+       "attr": "ripgrep",
+       "kind": "package"
+      }
+     }
+    ]
+   },
+   "version": 1
+  }
+ ],
+ "source_sha256": "508a541c19bd30733463c8f6dc4a113041422e0b8e85509a230e9720072812f1",
+ "user": "learner"
+}
