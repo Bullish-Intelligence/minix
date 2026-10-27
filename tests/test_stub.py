@@ -361,7 +361,9 @@ def test_the_locked_tree_is_not_used_without_a_hash_or_a_tree_or_for_a_path(tmp_
 
 def test_input_names_falls_back_to_the_url_when_the_lock_does_not_help(tmp_path: Path) -> None:
     run = FakeRun(0, '["home-manager"]')
-    absent = lock_node(narHash="sha256-" + "A" * 43 + "=")  # no store holds the tree of this hash
+    absent = lock_node(
+        narHash="sha256-" + "B" * 43 + "="
+    )  # no store holds this tree (the all-A fake hash can: a failed fetch leaves it)
     got = stub.input_names(GIT_URL, locked=absent, run=run)
     assert got == frozenset({"home-manager"})
     assert len(run.commands) == 1
