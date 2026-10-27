@@ -20,6 +20,17 @@
       url = "git+https://github.com/Bullish-Intelligence/pynix?ref=refs/tags/pynix-v0.3.0";
       flake = false;
     };
+    # The Zellij of the home: pyllij is the only source of that package (`packages.<system>.zellij`). minix installs
+    # exactly the Zellij that pyllij defines and measures (`lib/home.nix`, option `minix.zellijPackage`). To move Zellij,
+    # change pyllij, then bump this tag. The tag is the future public URL, like `pynix`. pyllij's own inputs follow the
+    # pins of this flake, so minix locks no second copy of them (pyllij's Zellij does not use them).
+    pyllij = {
+      url = "git+https://github.com/Bullish-Intelligence/pyllij?ref=refs/tags/v0.2.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.pyproject-build-systems.follows = "pyproject-build-systems";
+    };
     # The uv2nix inputs are declared here once.
     pyproject-nix = {
       url = "github:pyproject-nix/pyproject.nix/ddc400a6883b042646d0940e65971bb7f7e96107";

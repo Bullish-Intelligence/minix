@@ -58,6 +58,36 @@
         "type": "github"
       }
     },
+    "pyllij": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pyproject-build-systems": [
+          "pyproject-build-systems"
+        ],
+        "pyproject-nix": [
+          "pyproject-nix"
+        ],
+        "uv2nix": [
+          "uv2nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793102027,
+        "narHash": "sha256-nWWgzggWQZKCdN7RW8+gmdMJ4BPx7pT35IzbfYIiB74=",
+        "ref": "refs/tags/v0.2.0",
+        "rev": "0cc5cc28a8e5fad12750398d4a3ff35c8c9c5142",
+        "revCount": 19,
+        "type": "git",
+        "url": "https://github.com/Bullish-Intelligence/pyllij"
+      },
+      "original": {
+        "ref": "refs/tags/v0.2.0",
+        "type": "git",
+        "url": "https://github.com/Bullish-Intelligence/pyllij"
+      }
+    },
     "pynix": {
       "flake": false,
       "locked": {
@@ -128,6 +158,7 @@
         "flake-parts": "flake-parts",
         "home-manager": "home-manager",
         "nixpkgs": "nixpkgs",
+        "pyllij": "pyllij",
         "pynix": "pynix",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",

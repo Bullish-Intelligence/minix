@@ -237,7 +237,9 @@ class TerminalWorkspace(Component):
     def emit(self) -> Iterator[Model]:
         # zellij does not start by itself: the login stays a plain shell. No component sets `settings`, so Home Manager
         # writes no settings file and the folders `~/.config/zellij`, `htop`, and `bat` stay the learner's.
-        yield HmZellij(enable=True, enableBashIntegration=False)
+        # The Zellij package comes from pyllij (the input `pyllij` of the flake of minix), through the option
+        # `minix.zellijPackage` of `lib/home.nix`. A Zellij move is a pyllij change, then a bump of that input.
+        yield HmZellij(enable=True, enableBashIntegration=False, package=ConfigRef(["minix", "zellijPackage"]))
         yield HmRipgrep(enable=True)
         yield HmFd(enable=True)
         yield HmBat(enable=True)

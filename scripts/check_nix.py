@@ -21,6 +21,8 @@ The checks (the reference drvPaths come from the spikes SG35 and SG42c):
   Hyprland or Noctalia package, and gives the drvPath of a hand-written Home Manager module. A learner option beats
   the component (`Default`). `Hyprland --verify-config` accepts the Lua when the program is on `PATH` or in
   `$MINIX_HYPRLAND`; else the line says `SKIP`.
+- `zellij`: the Zellij of `TerminalWorkspace` is `packages.<system>.zellij` of the locked input `pyllij`, at version
+  `ZELLIJ_VERSION`, with no settings and no shell integration. A scratch `pyllij` input moves the home's Zellij with it.
 - `compiler`: `minix-compile` runs with an empty environment. `minix` runs, and `aarch64-linux` evaluates.
 
 - `named`: a second, named nixpkgs end to end (PF-2): `NixpkgsPin("old", COMMIT)` and `Program(old.pkgs.hello)` give the input
@@ -53,6 +55,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SPEC_FILES = ["flake.nix", "flake.lock", "pyproject.toml", "uv.lock", "README.md", "lib", "nix", "src"]
 SYSTEM = "x86_64-linux"
+# The Zellij that pyllij defines and measures (Zellij 0.45.1 from the shared nixpkgs pin). Raise it when pyllij moves.
+ZELLIJ_VERSION = "0.45.1"
 
 # The drvPath hashes of the reference homes of the spikes (SG35 and SG42c). The session hook is off, and so is the
 # `minix` package (`minix.package = null`): the spikes had neither.
@@ -837,6 +841,59 @@ def check_desktop(tools: Tools) -> None:
     )
 
 
+ZELLIJ_HOME = """from minix_config import *
+
+home = Home(user="learner", programs=[TerminalWorkspace()])
+"""
+# A scratch `pyllij` with a package that no other input holds. It builds nothing: the check only reads its `outPath`.
+MARKER_PYLLIJ = """{
+  outputs = _: {
+    packages.x86_64-linux.zellij = derivation {
+      name = "zellij-marker-0.0.0";
+      version = "0.0.0";
+      system = "x86_64-linux";
+      builder = "/bin/sh";
+      args = [ "-c" "" ];
+    };
+  };
+}
+"""
+
+
+def check_zellij(tools: Tools) -> None:
+    """The Zellij of `TerminalWorkspace` comes from the input `pyllij`, and only from there (Z2)."""
+    ws = tools.workspace("zellij", ZELLIJ_HOME)
+    expr = f'(builtins.getFlake "path:{tools.source}").inputs.pyllij.packages.{SYSTEM}.zellij'
+    locked = nix("eval", "--raw", "--impure", "--expr", f"{expr}.outPath").strip()
+    version = nix("eval", "--raw", "--impure", "--expr", f"{expr}.version").strip()
+    expect(f"zellij: the input pyllij holds Zellij {ZELLIJ_VERSION}", version == ZELLIJ_VERSION, version)
+    config = f"path:{ws}#homeConfigurations.learner.config"
+    package = nix("eval", "--raw", f"{config}.programs.zellij.package.outPath", cwd=ws).strip()
+    expect("zellij: programs.zellij.package is the Zellij of the input pyllij", package == locked, f"{package} against {locked}")
+    packages = json.loads(
+        nix("eval", "--json", f"{config}.home.packages", "--apply", "ps: map (p: p.outPath) ps", cwd=ws)
+    )
+    expect("zellij: the home holds that Zellij and no other", packages.count(locked) == 1, str(packages))
+    bash = nix("eval", "--json", f"{config}.programs.zellij.enableBashIntegration", cwd=ws).strip()
+    settings = nix("eval", "--json", f"{config}.programs.zellij.settings", cwd=ws).strip()
+    expect("zellij: no shell integration and no settings", (bash, settings) == ("false", "{}"), f"{bash} {settings}")
+    # The flow is real: another `pyllij` gives another Zellij in the home (nixpkgs is not the source).
+    marker = WORK / "pyllij-marker"
+    shutil.rmtree(marker, ignore_errors=True)
+    marker.mkdir(parents=True)
+    (marker / "flake.nix").write_text(MARKER_PYLLIJ)
+    moved = nix(
+        "eval",
+        "--raw",
+        "--override-input",
+        "minix/pyllij",
+        f"path:{marker}",
+        f"{config}.programs.zellij.package.version",
+        cwd=ws,
+    ).strip()
+    expect("zellij: another pyllij input moves the Zellij of the home", moved == "0.0.0", moved)
+
+
 def check_session(tools: Tools) -> None:
     home = (
         "from minix_config import *\n"
@@ -933,6 +990,7 @@ def main() -> int:
         check_advanced,
         check_desktop,
         check_session,
+        check_zellij,
         check_packages,
     ]
     wanted = sys.argv[1:]  # names of checks: `check_nix.py desktop` runs only `check_desktop`

@@ -48,6 +48,13 @@ let
         defaultText = lib.literalMD "`packages.minix` of the flake of minix, built from its lock";
         description = "The `minix` command of the home. Its source is the pinned lock of this flake. null leaves it out.";
       };
+      zellijPackage = lib.mkOption {
+        type = lib.types.package;
+        internal = true;
+        default = inputs.pyllij.packages.${system}.zellij;
+        defaultText = lib.literalMD "`packages.zellij` of the input `pyllij` of the flake of minix";
+        description = "The Zellij of the component TerminalWorkspace. pyllij defines and measures it; minix installs it unchanged.";
+      };
     };
     config = {
       minix.pythonPath = pythonPath;

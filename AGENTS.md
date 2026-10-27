@@ -18,4 +18,6 @@ instructions, and `CLAUDE.md` is a symlink to this file.
 - `pyproject.toml` declares the package and its development dependencies.
 - `devenv.nix` declares the shell and the tasks that Testee runs.
 - `flake.nix` builds the package with uv2nix from `uv.lock`.
+- Zellij comes from the `pyllij` flake input, pinned by revision in `flake.nix`. Do not set another Zellij package.
+  To move Zellij, change pyllij, then bump the `pyllij` input and `ZELLIJ_VERSION` in `scripts/check_nix.py`.
 - For tool workflows, use the skills linked under `.agents/skills/`.

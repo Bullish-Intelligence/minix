@@ -190,7 +190,12 @@ def test_terminal_workspace_component() -> None:
         "programs.bat",
         "programs.htop",
     ]
-    assert fragments[0]["value"] == {"enable": True, "enableBashIntegration": False}  # no auto-start
+    # No auto-start. The package is the option `minix.zellijPackage`, which `lib/home.nix` fills from the input pyllij.
+    assert fragments[0]["value"] == {
+        "enable": True,
+        "enableBashIntegration": False,
+        "package": {"__nixdantic_ref__": {"kind": "config", "path": ["minix", "zellijPackage"]}},
+    }
     assert all("settings" not in f["value"] for f in fragments)  # no settings file
 
 

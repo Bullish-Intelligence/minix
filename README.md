@@ -26,6 +26,14 @@ nix build .#minix
 
 The flake builds the package from `uv.lock` with uv2nix.
 
+## Zellij
+
+`TerminalWorkspace` installs the Zellij of the `pyllij` flake input (`packages.<system>.zellij`), not the Zellij of
+nixpkgs. pyllij defines and measures that package, so minix installs exactly the Zellij that pyllij tests against.
+`lib/home.nix` fills the option `minix.zellijPackage` from the input, and the capability reads that option. To move
+Zellij, change the package in pyllij first. Then bump the `pyllij` tag in `flake.nix` and run `nix flake update pyllij`.
+The Nix check `zellij` in `scripts/check_nix.py` and `tests/test_zellij_source.py` guard the pin.
+
 ## Release
 
 ```bash
