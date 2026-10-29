@@ -15,7 +15,7 @@ from minix.workspace import find_workspace, stub_url, tilde
 
 
 def test_version() -> None:
-    assert __version__ == "0.3.1"
+    assert __version__ == "0.3.2"
 
 
 def test_the_layer_names_the_files_and_the_build_attribute() -> None:
