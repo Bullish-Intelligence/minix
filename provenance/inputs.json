@@ -15,7 +15,7 @@
     "PASS pair: pynix_hm from another nixpkgs stops the evaluation",
     "PASS pair: the same stub evaluates with the real pynix"
   ],
-  "commit": "e7b33ebbaed2ae7385ac415fa9b25866e4173a5f",
+  "commit": "537b876c2adcabb3d797087e1a2540d80406b8e8",
   "home-manager": {
     "narHash": "sha256-KuLePuhwJM9NLt/gTLHzXaOoSZKGoB3m7NfXjiQ98HY=",
     "rev": "fae6e9e42c3b762ab47635cddcfaf6f52374a61b"
@@ -35,6 +35,6 @@
     "home-manager": "fae6e9e42c3b762ab47635cddcfaf6f52374a61b",
     "nixpkgs": "e7439b6b14ad3cc35d05608ebca9bce01a25f5f8"
   },
-  "tag": "v0.3.1",
-  "version": "0.3.1"
+  "tag": "v0.3.2",
+  "version": "0.3.2"
 }
