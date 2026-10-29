@@ -63,6 +63,17 @@ def environment_workspace(env: Mapping[str, str], cwd: Path, home: Path) -> Path
     return folder.resolve()
 
 
+def init_workspace(explicit: Path | None, cwd: Path, home: Path, env: Mapping[str, str] | None = None) -> Path:
+    """The folder that `minix init` makes: `--dir`, else the folder that `MINIX_WORKSPACE` names, else `~/minix`.
+
+    The variable may name a folder that does not exist yet. `minix init` makes it and its parents.
+    """
+    if explicit is not None:
+        return explicit.resolve()
+    value = (env or {}).get(WORKSPACE_VARIABLE, "")
+    return (cwd / expand_home(value, home)).resolve() if value else (home / "minix").resolve()
+
+
 def find_workspace(explicit: Path | None, cwd: Path, home: Path, env: Mapping[str, str] | None = None) -> Path:
     """The minix workspace for this run.
 

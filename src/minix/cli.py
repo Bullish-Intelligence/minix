@@ -41,12 +41,17 @@ def _exit(code: int) -> None:
 
 @app.command("init")
 def init_command(
-    directory: Annotated[Path | None, typer.Option("--dir", help="The new folder (default: ~/minix).")] = None,
+    directory: Annotated[
+        Path | None,
+        typer.Option(
+            "--dir", help="The new folder (default: $MINIX_WORKSPACE, else ~/minix). Missing parent folders are made."
+        ),
+    ] = None,
     url: Annotated[
         str | None, typer.Option("--url", help="The source of minix in the stub (default: the release).")
     ] = None,
 ) -> None:
-    """Make the workspace ~/minix: the stub, the lock, home.py, and the first save. It needs no network."""
+    """Make the workspace (~/minix, or $MINIX_WORKSPACE): the stub, the lock, home.py, and the first save. No network."""
     _exit(commands.init(commands.real_context(), directory, url))
 
 

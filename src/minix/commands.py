@@ -45,7 +45,7 @@ from minix.release import (
     tag_name,
 )
 from minix.seedlock import workspace_lock
-from minix.workspace import environment_home, find_workspace, host_system, tilde, warn_no_linger
+from minix.workspace import environment_home, find_workspace, host_system, init_workspace, tilde, warn_no_linger
 from minix_config.entry import written_entry
 from minix_config.stub import DEFAULT_MINIX_URL, input_names, write_stub
 
@@ -142,12 +142,15 @@ def knows_author(ctx: Context, ws: Path) -> bool:
 def init(ctx: Context, directory: Path | None = None, url: str | None = None) -> int:
     """Make the workspace offline: the stub, the lock, `home.py`, `.gitignore`, and the first save (009-D2, G9).
 
+    The folder is `--dir`, else `MINIX_WORKSPACE` (with `~` expanded), else `~/minix`. Missing parent folders are made.
+    A folder that holds files, `home.py` included, is not touched: init makes a new workspace only.
+
     The lock comes from the files that the package carries (`ctx.share`), and only for the default URL of minix: the
     files describe this build, not a source that the learner names with `--url`.
     """
-    ws = (directory or ctx.home / "minix").resolve()
+    ws = init_workspace(directory, ctx.cwd, ctx.home, ctx.env)
     folder = tilde(ws, ctx.home)
-    made = not ws.exists()
+    made = next((path for path in (*ws.parents[::-1], ws) if not path.exists()), None)  # the top folder that init makes
     try:
         if ws.exists() and (not ws.is_dir() or any(ws.iterdir())):
             raise Fail(f"{folder} exists and is not empty. minix init makes a new folder; give another with --dir.")
@@ -166,8 +169,8 @@ def init(ctx: Context, directory: Path | None = None, url: str | None = None) ->
         identity = [] if knows_author(ctx, ws) else ["-c", f"user.name={name}", "-c", f"user.email={email}"]
         git(ctx, ws, *identity, "commit", "-q", "-m", "minix init")
     except (Fail, ValueError) as failure:
-        if made:
-            shutil.rmtree(ws, ignore_errors=True)
+        if made is not None:
+            shutil.rmtree(made, ignore_errors=True)
         ctx.say(str(failure))
         return failure.code if isinstance(failure, Fail) else 1
     ctx.say(f"created {folder}")

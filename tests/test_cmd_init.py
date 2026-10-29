@@ -109,6 +109,71 @@ def test_init_takes_another_folder(setup: Setup) -> None:
     assert not setup.ws.exists()
 
 
+def test_init_uses_the_folder_of_the_environment_variable(setup: Setup) -> None:
+    named = setup.home / "named" / "minix"
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": str(named)}
+    assert commands.init(setup.ctx) == 0
+    assert (named / "home.py").is_file()
+    assert not setup.ws.exists()
+    assert setup.lines[0] == "created ~/named/minix"
+    assert setup.lines[-1] == "next: edit ~/named/minix/home.py, then run: minix apply"
+
+
+def test_init_expands_the_tilde_of_the_variable_and_makes_the_parent_folders(setup: Setup) -> None:
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": "~/.dotfiles/minix"}
+    assert not (setup.home / ".dotfiles").exists()
+    assert commands.init(setup.ctx) == 0
+    assert (setup.home / ".dotfiles" / "minix" / "home.py").is_file()
+    assert (setup.home / ".dotfiles" / "minix" / ".git").is_dir()
+    assert setup.lines[0] == "created ~/.dotfiles/minix"
+    assert not setup.ws.exists()
+
+
+def test_init_reads_a_variable_that_is_the_tilde_alone_as_the_home_folder(setup: Setup) -> None:
+    setup.home.mkdir(exist_ok=True)
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": "~"}
+    assert commands.init(setup.ctx) == 0
+    assert (setup.home / "home.py").is_file()
+
+
+def test_init_without_the_variable_makes_the_default_folder(setup: Setup) -> None:
+    assert "MINIX_WORKSPACE" not in setup.ctx.env
+    assert commands.init(setup.ctx) == 0
+    assert (setup.ws / "home.py").is_file()
+
+
+def test_init_treats_an_empty_variable_as_unset(setup: Setup) -> None:
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": ""}
+    assert commands.init(setup.ctx) == 0
+    assert (setup.ws / "home.py").is_file()
+
+
+def test_init_dir_wins_over_the_variable(setup: Setup) -> None:
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": "~/named"}
+    other = setup.home / "other"
+    assert commands.init(setup.ctx, other) == 0
+    assert (other / "home.py").is_file()
+    assert not (setup.home / "named").exists()
+
+
+def test_init_leaves_an_existing_workspace_of_the_variable_alone(setup: Setup) -> None:
+    named = setup.home / "named"
+    named.mkdir(parents=True)
+    (named / "home.py").write_text("mine\n")
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": "~/named"}
+    assert commands.init(setup.ctx) == 1
+    assert setup.lines == ["~/named exists and is not empty. minix init makes a new folder; give another with --dir."]
+    assert (named / "home.py").read_text() == "mine\n"
+    assert not setup.ws.exists()
+
+
+def test_init_removes_the_parent_folders_that_it_made_when_it_fails(setup: Setup) -> None:
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": "~/.dotfiles/minix"}
+    setup.ctx.user = "Ada Lovelace"  # Home Manager refuses this name
+    assert commands.init(setup.ctx) == 1
+    assert not (setup.home / ".dotfiles").exists()
+
+
 def test_init_without_a_bundled_lock_says_so(setup: Setup) -> None:
     setup.ctx.share = None
     assert commands.init(setup.ctx) == 0
