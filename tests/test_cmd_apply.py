@@ -1,6 +1,7 @@
 """`minix apply`: the order of the steps, the plain lines, the rollback, and the refusals (CONCEPT 4.1, S16)."""
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -230,12 +231,24 @@ def test_apply_outside_a_workspace_goes_to_the_default_folder(setup: Setup) -> N
     assert setup.commits()[0] == "apply: home.json"
 
 
+def test_apply_outside_a_workspace_goes_to_the_folder_of_the_variable(setup: Setup, tmp_path: Path) -> None:
+    kept = tmp_path / "kept"
+    setup.ws.rename(kept)  # the workspace is not ~/minix any more
+    setup.ctx.cwd = setup.home
+    setup.ctx.env = {**setup.ctx.env, "MINIX_WORKSPACE": str(kept)}
+    assert apply(setup) == 0
+    log = subprocess.run(
+        ["git", "log", "--format=%s"], cwd=kept, env=setup.runner.env, capture_output=True, text=True, check=True
+    )
+    assert log.stdout.splitlines()[0] == "apply: home.json"
+
+
 def test_apply_without_a_workspace_says_where_to_go(tmp_path: Path) -> None:
     from test_cmd_support import make_setup
 
     other = make_setup(tmp_path)
     assert commands.apply(other.ctx) == 1
-    assert other.lines == ["~ is not a minix workspace. Go to ~/minix first."]
+    assert other.lines == ["~ is not a minix workspace. Go to ~/minix first, or set MINIX_WORKSPACE to its folder."]
 
 
 def test_apply_finds_the_workspace_from_a_subfolder(setup: Setup) -> None:

@@ -4,6 +4,7 @@ minix is the home layer of Basix v2. One person writes a `home.py` file in typed
 generated Home Manager classes. minix compiles it to `home.json` and applies it as a standalone
 Home Manager configuration. The `minix` command has four verbs: `init`, `apply`, `undo`, and
 `update`. minix runs on any Linux host with Nix and a systemd user manager, with or without Basix.
+The workspace is `~/minix` by default. If you keep it elsewhere, set `MINIX_WORKSPACE` to its folder.
 
 This repository holds only the empty scaffold. The `minix` command prints its help and its version.
 

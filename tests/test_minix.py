@@ -135,9 +135,71 @@ def test_find_workspace_falls_back_to_the_default_folder(tmp_path: Path) -> None
 
 
 def test_find_workspace_stops_when_there_is_none(tmp_path: Path) -> None:
-    with pytest.raises(Fail, match=r"is not a minix workspace\. Go to ~/minix first\.") as stop:
+    with pytest.raises(
+        Fail, match=r"is not a minix workspace\. Go to ~/minix first, or set MINIX_WORKSPACE to its folder\."
+    ) as stop:
         find_workspace(None, tmp_path, tmp_path)
     assert stop.value.code == 1
+
+
+def make_workspace(folder: Path, entry: str = "home.py") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / ".git").mkdir(exist_ok=True)
+    (folder / entry).write_text("")
+    return folder
+
+
+def test_the_environment_names_the_workspace_outside_any_workspace(tmp_path: Path) -> None:
+    kept = make_workspace(tmp_path / "home" / "kept" / "minix")
+    nowhere = tmp_path / "nowhere"
+    nowhere.mkdir()
+    assert find_workspace(None, nowhere, tmp_path / "home", {"MINIX_WORKSPACE": str(kept)}) == kept
+
+
+def test_the_environment_expands_the_tilde_against_the_home_of_the_run(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    kept = make_workspace(home / "kept" / "minix")
+    assert find_workspace(None, tmp_path, home, {"MINIX_WORKSPACE": "~/kept/minix"}) == kept
+    make_workspace(home)
+    assert find_workspace(None, tmp_path, home, {"MINIX_WORKSPACE": "~"}) == home.resolve()
+
+
+def test_the_order_is_dir_then_the_repository_above_then_the_environment_then_the_default(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    default = make_workspace(home / "minix")
+    named = make_workspace(home / "named")
+    above = make_workspace(tmp_path / "above")
+    explicit = tmp_path / "explicit"
+    explicit.mkdir()
+    env = {"MINIX_WORKSPACE": str(named)}
+    inside = above / "sub"
+    inside.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    assert find_workspace(explicit, inside, home, env) == explicit.resolve()  # --dir first
+    assert find_workspace(None, inside, home, env) == above  # then the repository above the current folder
+    assert find_workspace(None, elsewhere, home, env) == named  # then the environment
+    assert find_workspace(None, elsewhere, home, {}) == default  # then ~/minix
+    assert find_workspace(None, elsewhere, home, {"MINIX_WORKSPACE": ""}) == default  # an empty variable is unset
+
+
+def test_a_variable_that_names_a_folder_with_no_home_py_stops_with_one_line(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    make_workspace(home / "minix")  # the default exists, and still the run must not fall back to it
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(Fail) as stop:
+        find_workspace(None, tmp_path, home, {"MINIX_WORKSPACE": str(empty)})
+    assert str(stop.value) == (
+        f"MINIX_WORKSPACE is {empty}, but that folder holds no home.py. "
+        "Set MINIX_WORKSPACE to your workspace folder, or unset it."
+    )
+    assert stop.value.code == 1
+    with pytest.raises(Fail, match="holds no home.py"):  # a folder that does not exist
+        find_workspace(None, tmp_path, home, {"MINIX_WORKSPACE": "~/missing"})
+    make_workspace(tmp_path / "bas", "system.py")  # a Basix workspace is not a minix workspace
+    with pytest.raises(Fail, match="holds no home.py"):
+        find_workspace(None, tmp_path, home, {"MINIX_WORKSPACE": str(tmp_path / "bas")})
 
 
 def test_tilde() -> None:

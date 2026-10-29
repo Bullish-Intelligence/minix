@@ -98,7 +98,9 @@ def test_update_outside_a_workspace_says_where_to_go(setup: Setup) -> None:
     setup.ctx.cwd = setup.home / "nowhere"
     (setup.ws / ".git").rename(setup.ws / ".gone")
     assert commands.update(setup.ctx) == 1
-    assert setup.lines[0].endswith("is not a minix workspace. Go to ~/minix first.")
+    assert setup.lines[0].endswith(
+        "is not a minix workspace. Go to ~/minix first, or set MINIX_WORKSPACE to its folder."
+    )
 
 
 @pytest.mark.parametrize(

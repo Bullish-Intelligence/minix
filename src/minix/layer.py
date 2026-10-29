@@ -27,6 +27,8 @@ RESET_FAILED: Command = ("systemctl", "--user", "reset-failed")
 FALLBACK_IDENTITY = ("minix", "minix@localhost")
 
 DEFAULT_FOLDER = "~/minix"
+# A person who keeps the workspace elsewhere sets this variable to its folder.
+WORKSPACE_VARIABLE = "MINIX_WORKSPACE"
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,10 @@ class MinixWords(Words):
         'minix changes only your own home. Set user="{running}" in {entry}.'
     )
     no_entry: str = "Found no {entry} in {folder}. Run {name} init to make one."
+    no_workspace: str = "{path} is not a {name} workspace. Go to {folder} first, or set {variable} to its folder."
+    bad_workspace_variable: str = (
+        "{variable} is {value}, but that folder holds no {entry}. Set {variable} to your workspace folder, or unset it."
+    )
     basix_workspace: str = (
         "{path} is a Basix workspace. {name} does not change it.\n"
         "To change the machine, run: basix apply\n"

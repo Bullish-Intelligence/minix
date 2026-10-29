@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pynix_engine import Fail, Session
 
-from minix.layer import DEFAULT_FOLDER, WORDS
+from minix.layer import DEFAULT_FOLDER, WORDS, WORKSPACE_VARIABLE
 
 SYSTEMS = {"x86_64": "x86_64-linux", "amd64": "x86_64-linux", "aarch64": "aarch64-linux", "arm64": "aarch64-linux"}
 
@@ -42,11 +42,32 @@ def stub_url(workspace: Path) -> str | None:
     return found.group(1) if found else None
 
 
-def find_workspace(explicit: Path | None, cwd: Path, home: Path) -> Path:
+def expand_home(text: str, home: Path) -> Path:
+    """`~` and `~/x` mean the home folder of this run. Any other text is a path as written."""
+    if text == "~":
+        return home
+    return home / text[2:] if text.startswith("~/") else Path(text)
+
+
+def environment_workspace(env: Mapping[str, str], cwd: Path, home: Path) -> Path | None:
+    """The folder that `MINIX_WORKSPACE` names, or None when the variable is unset or empty.
+
+    A folder with no `home.py` is an error: the variable was set on purpose, so minix does not fall back.
+    """
+    value = env.get(WORKSPACE_VARIABLE, "")
+    if not value:
+        return None
+    folder = cwd / expand_home(value, home)
+    if not (folder / "home.py").is_file():
+        raise Fail(WORDS.bad_workspace_variable.format(variable=WORKSPACE_VARIABLE, value=value, entry="home.py"))
+    return folder.resolve()
+
+
+def find_workspace(explicit: Path | None, cwd: Path, home: Path, env: Mapping[str, str] | None = None) -> Path:
     """The minix workspace for this run.
 
     `--dir` wins. Else the repository that holds `cwd` counts when it has a `home.py`. A Basix workspace gets
-    its own line (009-D15). Else `~/minix`.
+    its own line (009-D15). Else the folder that `MINIX_WORKSPACE` names. Else `~/minix`.
     """
     if explicit is not None:
         return explicit.resolve()
@@ -58,10 +79,16 @@ def find_workspace(explicit: Path | None, cwd: Path, home: Path) -> Path:
         if (folder / "system.py").is_file():
             raise Fail(WORDS.basix_workspace.format(path=tilde(folder, home), name="minix", folder=DEFAULT_FOLDER))
         break
+    if (named := environment_workspace(env or {}, cwd, home)) is not None:
+        return named
     default = home / "minix"
     if (default / ".git").exists():
         return default
-    raise Fail(WORDS.not_a_workspace.format(path=tilde(cwd, home), name="minix", folder=DEFAULT_FOLDER))
+    raise Fail(
+        WORDS.no_workspace.format(
+            path=tilde(cwd, home), name="minix", folder=DEFAULT_FOLDER, variable=WORKSPACE_VARIABLE
+        )
+    )
 
 
 def lingering(session: Session, user: str) -> bool | None:
