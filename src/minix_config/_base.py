@@ -27,13 +27,44 @@ Restart = Annotated[
 ]
 
 
+#: The workspace folder (the folder of home.py). `minix_config.compile` sets it before it runs home.py.
+ROOT: Path | None = None
+_SKIPPED = {"site-packages", "__pycache__", "node_modules"}
+
+
+def learner_path(filename: str, root: Path) -> str | None:
+    """The name of a file of the learner, or None when the file is not learner code.
+
+    Learner code is a file below the workspace folder. The name is relative to that folder: `home.py`, `helpers/mine.py`.
+    Code of an input package sits in `.basix/pynix`. Its name is relative to that folder: `comps/desk.py`.
+    A generated package (`pynix_NAME`), a hidden folder, and `site-packages` are not learner code.
+    """
+    if not filename or filename.startswith("<"):
+        return None
+    path = Path(filename).resolve()
+    packages = root / ".basix" / "pynix"
+    for base in (packages, root):  # the longer folder first, so that an input package gets its short name
+        if base in path.parents:
+            parts = path.relative_to(base).parts
+            if base == packages and parts[0].startswith("pynix_"):
+                return None
+            if any(part.startswith(".") or part in _SKIPPED for part in parts[:-1]):
+                return None
+            return "/".join(parts)
+    return None
+
+
 def _learner_site() -> str:
-    """`file:line` of the first caller outside this package and Pydantic: the line of the learner."""
+    """`file:line` of the first caller outside this package and Pydantic: the line of the learner.
+
+    The file is relative to the workspace folder (see `learner_path`). Outside a compile it is the base name.
+    """
     for frame in inspect.stack()[2:]:
         path = Path(frame.filename)
         if _HERE in path.resolve().parents or {"pydantic", "nixdantic"} & set(path.parts) or path.name.startswith("<"):
             continue
-        return f"{path.name}:{frame.lineno}"
+        name = (learner_path(frame.filename, ROOT) if ROOT is not None else None) or path.name
+        return f"{name}:{frame.lineno}"
     return "unknown"
 
 

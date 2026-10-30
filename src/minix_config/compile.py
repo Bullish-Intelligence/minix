@@ -11,6 +11,9 @@ JSON. An error prints one plain line that starts with `FILE:LINE:COLUMN:` and ex
 validation error (`nixdantic.Plain`, `Expect`, and the validators of `minix_config`). This file finds the place in the
 source and prints the line. It prints no Python traceback.
 
+An error in a file that home.py imports names that file and ends with `(from home.py:LINE)`. The file name is relative to
+the workspace, or to `.basix/pynix` for the code of an input package. The sites of the fragments use the same names.
+
 The output holds `"input_packages"` when the file has flake inputs: the `narHash` of each input package. `lib.home` checks
 it against `flake.lock` at evaluation, so a lock that moved after the compile stops the evaluation.
 
@@ -30,9 +33,11 @@ import runpy
 import sys
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from pydantic import ValidationError
+
+from ._base import learner_path
 
 if TYPE_CHECKING:
     from pynix_native import Found
@@ -233,9 +238,73 @@ def _constructor(name: str, tree: ast.Module, line: int | None, error: TypeError
     return [f"{name}:{line or 1}:{call.col_offset + 1 if call else 1}: {text}"]
 
 
-def _source_line(error: BaseException, name: str) -> int | None:
-    frames = [f for f in traceback.extract_tb(error.__traceback__) if Path(f.filename).name == name]
-    return frames[-1].lineno if frames else None
+class _Frame(NamedTuple):
+    """A frame of a traceback that holds learner code. `name` is relative to the workspace (see `learner_path`)."""
+
+    name: str
+    path: Path
+    line: int
+
+
+def _learner_frames(error: BaseException, root: Path) -> list[_Frame]:
+    """The frames of the traceback that hold learner code, from the outermost to the deepest."""
+    frames = []
+    for frame in traceback.extract_tb(error.__traceback__):
+        if name := learner_path(frame.filename, root):
+            frames.append(_Frame(name, Path(frame.filename), frame.lineno or 1))
+    return frames
+
+
+def _text_of(name: str, source: Path) -> str | None:
+    """The text of a learner file, from its name relative to the workspace or to `.basix/pynix`. None if it is not there."""
+    root = source.resolve().parent
+    for base in (root, root / ".basix" / "pynix"):
+        try:
+            return (base / name).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+    return None
+
+
+def _parse(text: str | None) -> ast.Module:
+    try:
+        return ast.parse(text or "")
+    except (SyntaxError, ValueError):
+        return ast.Module(body=[], type_ignores=[])
+
+
+class _Site(NamedTuple):
+    """Where an error happened: the file name to print, its syntax tree, the line, and the text after each line."""
+
+    name: str
+    tree: ast.Module
+    line: int | None
+    suffix: str
+    helper: bool
+
+
+def _site(error: BaseException, source: Path, tree: ast.Module, where: str = "") -> _Site:
+    """The deepest learner frame of the error.
+
+    In home.py the site is the line of home.py. In another file (a helper of the workspace, or code of an input package)
+    the site is that file, and the lines end with `(from home.py:LINE)`: the line of home.py that led there.
+    `where` is the site of a capability that failed in `emit`, for an error that has no learner frame of its own.
+    """
+    name = source.name
+    frames = _learner_frames(error, source.resolve().parent)
+    home = next((f.line for f in reversed(frames) if f.name == name), None)
+    if frames and frames[-1].name != name:
+        deepest = frames[-1]
+        try:
+            other = _parse(deepest.path.read_text())
+        except (OSError, UnicodeDecodeError):
+            other = _parse(None)
+        return _Site(deepest.name, other, deepest.line, f" (from {name}:{home})" if home else "", True)
+    if not frames and where:
+        file, _, number = where.rpartition(":")
+        if file and file != name and number.isdigit() and (text := _text_of(file, source)) is not None:
+            return _Site(file, _parse(text), int(number), "", True)
+    return _Site(name, tree, home, "", False)
 
 
 def _syntax(name: str, error: SyntaxError) -> list[str]:
@@ -245,17 +314,28 @@ def _syntax(name: str, error: SyntaxError) -> list[str]:
     return [f"{name}:{error.lineno or 1}:{error.offset or 1}: syntax error: {text}"]
 
 
-def report(source: Path, error: BaseException) -> list[str]:
-    from nixdantic import PriorityError
-    from pynix_pkgs import PackageError
+_PATH_TAIL = re.compile(r" \(.*\)$")  # the path that Python adds to "cannot import name"
 
+
+def _helper_syntax(name: str, error: SyntaxError, source: Path) -> list[str]:
+    """One plain line for a syntax error in a file that home.py imports. The line ends with the line of home.py."""
+    text = " ".join(str(error.msg).split())
+    frames = _learner_frames(error, source.resolve().parent)
+    home = next((f.line for f in reversed(frames) if f.name == source.name), None)
+    suffix = f" (from {source.name}:{home})" if home else ""
+    return [f"{name}:{error.lineno or 1}:{error.offset or 1}: SyntaxError: {text}{suffix}"]
+
+
+def report(source: Path, error: BaseException) -> list[str]:
     from minix_config import ComponentError
 
     name = source.name
-    if (
-        isinstance(error, SyntaxError) and Path(str(error.filename or "")).name == name
-    ):  # the file itself does not parse
-        return _syntax(name, error)
+    if isinstance(error, SyntaxError):
+        found = learner_path(str(error.filename or ""), source.resolve().parent)
+        if found == name:  # the file itself does not parse
+            return _syntax(name, error)
+        if found:  # a file that home.py imports does not parse
+            return _helper_syntax(found, error, source)
     if isinstance(error, OSError) and Path(str(error.filename or "")).name == name:
         return [f"{name}:1:1: cannot read the file: {error.strerror}."]
     try:
@@ -273,14 +353,29 @@ def report(source: Path, error: BaseException) -> list[str]:
     ):  # a capability failed inside `emit`: the traceback of the inner error has the line
         inner = error.error
         if isinstance(inner, ValidationError):
-            return _validation(name, tree, _source_line(inner, name), inner, f" (in {error.label})")
+            site = _site(inner, source, tree, error.where)
+            return [
+                text + site.suffix
+                for text in _validation(site.name, site.tree, site.line, inner, f" (in {error.label})")
+            ]
         return [f"{error.where}: the capability {error.label} failed: {type(inner).__name__}: {inner}"]
-    line = _source_line(error, name)
+    site = _site(error, source, tree)
+    return [text + site.suffix for text in _describe(site, error)]
+
+
+def _describe(site: _Site, error: BaseException) -> list[str]:
+    """The plain lines for an error at `site`."""
+    from nixdantic import PriorityError
+    from pynix_pkgs import PackageError
+
+    name, tree, line = site.name, site.tree, site.line
     if isinstance(error, TypeError) and (text := _constructor(name, tree, line, error)):
         return text
     if isinstance(error, ValidationError):
         return _validation(name, tree, line, error)
     if isinstance(error, ImportError) and "cannot import name" in str(error):
+        if site.helper:  # the import is in a helper: the names of minix are not the cause
+            return [f"{name}:{line or 1}: ImportError: {_PATH_TAIL.sub('', str(error))}"]
         return _unknown_name(name, tree, line, str(error).split("'")[1])
     if isinstance(error, PackageError):  # a package name that the package list does not have (009-D19)
         spot = next(
@@ -328,10 +423,13 @@ def _warnings(source: Path) -> None:
 
     if not _base.WARNINGS:
         return
-    tree = ast.parse(source.read_text())
+    home = ast.parse(source.read_text())
     for where, field, chars in _base.WARNINGS:
         title, _, attr = field.partition(".")
-        line = int(where.rpartition(":")[2])
+        file, _, number = where.rpartition(":")
+        line = int(number)
+        file = file or source.name
+        tree = home if file == source.name else _parse(_text_of(file, source))  # a call in a helper has its own file
         call = next(
             (
                 n
@@ -345,7 +443,7 @@ def _warnings(source: Path) -> None:
         )
         arg = next((k.value for k in call.keywords if k.arg == attr), None) if call else None
         print(
-            f"{source.name}:{arg.lineno if arg else line}:{arg.col_offset + 1 if arg else 1}: warning: {field} holds `{chars}`. "
+            f"{file}:{arg.lineno if arg else line}:{arg.col_offset + 1 if arg else 1}: warning: {field} holds `{chars}`. "
             f"No shell runs, so it is a plain argument. To use a shell, write program=pkgs.bash, args=\"-c '...'\".",
             file=sys.stderr,
         )
@@ -442,6 +540,7 @@ def main(argv: list[str]) -> int:
     reset_nixpkgs()
     source, out = Path(argv[1]), Path(argv[2])
     root = source.resolve().parent
+    _base.ROOT = root  # the sites of the fragments are relative to the workspace
     packages = root / ".basix" / "pynix"  # where `minix apply` puts `pynix_NAME`
     set_apply_command(COMMAND)
     set_module_attr(MODULE_ATTR)  # an `Input` names the Home Manager word, not `nixosModules`
