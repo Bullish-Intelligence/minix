@@ -47,6 +47,47 @@ home = Home(
 `after` and `wants` work for user units only. The user manager does not see system units. To wait for a system thing,
 use a condition or a `pre_start` step that waits with a bound.
 
+## More unit settings
+
+`Service` has three more settings. Each writes one systemd key.
+
+- `description="Text"` writes `Description=`. The default is `minix service NAME`. Write one line.
+- `requires=["db"]` writes `Requires=`, like `wants`. A required unit that fails to start stops this service from
+  starting. `requires` does not set the order, so add the same names to `after`.
+- `environment_file="~/.config/app/env"` writes `EnvironmentFile=`. A leading `-` means the service also starts when the
+  file is missing.
+
+A socket unit goes in `options=[...]`. A `Service` orders itself after it with `after` and `requires`:
+
+```python
+from pynix_hm.systemd.user import User, User_Automounts_Value
+
+home = Home(
+    user="learner",
+    services=[Service("daemon", program=pkgs.python3, args="serve.py", after=["daemon.socket"], requires=["daemon.socket"])],
+    options=[User(sockets={"daemon": User_Automounts_Value(Socket={"ListenStream": "%t/daemon.sock"})})],
+)
+```
+
+For a key that `Service` has no setting for, write a second piece for the same unit name in `options=[...]`. Home Manager
+joins the two pieces. For example, `User(services={"daemon": User_Services_Value(Unit_X_SwitchMethod="keep-old")})` adds
+`X-SwitchMethod=keep-old` to the `[Unit]` section of `daemon`. A key that both pieces set is an error.
+
+## A package from a Nix file
+
+`program` takes a package of the package list (`pkgs.NAME`) or a `Native` package. A `Native` package comes from a Nix file
+in the workspace. `Service` and `Step` need `file=` with it, because minix cannot see the main program of the package.
+
+```python
+Service("daemon", program=Native("pkg.nix", ["daemon"]), file="daemon")
+```
+
+The file `pkg.nix` gives the package:
+
+```nix
+{ pkgs, ... }: { daemon = pkgs.writeShellScriptBin "daemon" "true"; }
+```
+
 ## Develop
 
 ```bash
