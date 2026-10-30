@@ -694,7 +694,12 @@ def case_rollback() -> None:
     text = "\n".join(again.lines)
     check("rollback", "the next apply does not say that the home is the same", False, "only files changed" in text)
     check("rollback", "the next apply does not say nothing to change", False, "nothing to change" in text)
-    check("rollback", "the next apply switches and finds the failed unit", True, "problem: failed units: api.service" in text)
+    check(
+        "rollback",
+        "the next apply switches and finds the failed unit",
+        True,
+        "problem: failed units: api.service" in text,
+    )
     check("rollback", "the next apply exits 3", 3, again.rc)
     still = sh(f"test -e {UNSETTLED} && echo yes || echo no", show=False).out.strip()
     check("rollback", "the mark stays while no good rollback happened", "yes", still)
@@ -780,7 +785,9 @@ def case_input(demo_text: str, demo_dir: Path) -> None:
 def case_gitinput(text: str, repo_dir: Path) -> None:
     """011 P3, finding 2: the folder of a `git+file` input is gone. The VM has no network, so the names must come from the store."""
     sh("rm -rf ~/demo-git ~/demo-git.away ~/gitinput", show=False)
-    tar = subprocess.run(["tar", "-C", str(repo_dir), "-cf", "-", "."], capture_output=True)  # with .git: the same revision
+    tar = subprocess.run(
+        ["tar", "-C", str(repo_dir), "-cf", "-", "."], capture_output=True
+    )  # with .git: the same revision
     done = subprocess.run(
         ["ssh", *SSHOPT, f"{USER}@127.0.0.1", "mkdir -p ~/demo-git && tar -C ~/demo-git -xf -"],
         input=tar.stdout,
@@ -803,7 +810,12 @@ def case_gitinput(text: str, repo_dir: Path) -> None:
         check("gitinput", f"the stub holds: {line}", True, line in stub)
     lock = json.loads(sh(f"cat {where}/flake.lock", show=False).out)
     locked = lock["nodes"].get("demo", {}).get("locked", {})
-    check("gitinput", "the lock holds the input as a git tree with a hash", ("git", True), (locked.get("type"), "narHash" in locked))
+    check(
+        "gitinput",
+        "the lock holds the input as a git tree with a hash",
+        ("git", True),
+        (locked.get("type"), "narHash" in locked),
+    )
     before = state(where)
     sums = f"cd {where} && sha256sum flake.nix flake.lock"
     sums_before = sh(sums, show=False).out
@@ -898,18 +910,25 @@ def main() -> int:
         ssh_env = {**os.environ, "NIX_SSHOPTS": " ".join(SSHOPT)}
         t = time.time()
         prep = WORK / "prep" / "input"
+        # A source that the host fetched itself has no signature, so the VM takes it only with `--no-check-sigs`.
         done = subprocess.run(
-            ["nix", *FEATURES, "flake", "archive", "--to", "ssh-ng://root@127.0.0.1", "--no-write-lock-file", str(prep)],
+            ["nix", *FEATURES, "flake", "archive", "--no-check-sigs", "--to", "ssh-ng://root@127.0.0.1", "--no-write-lock-file", str(prep)],
             env=ssh_env, capture_output=True, text=True,
         )  # fmt: skip
         log(
             f"== nix flake archive (the input sources): rc={done.returncode}, {time.time() - t:.0f} s\n{done.stderr[-300:]}"
         )
+        if done.returncode != 0:
+            raise SystemExit("nix flake archive failed: the VM has no input sources, so every case would fail offline")
         done = subprocess.run(
-            ["nix", *FEATURES, "flake", "archive", "--to", "ssh-ng://root@127.0.0.1", "--no-write-lock-file", str(WORK / "prep" / "gitinput")],
+            ["nix", *FEATURES, "flake", "archive", "--no-check-sigs", "--to", "ssh-ng://root@127.0.0.1", "--no-write-lock-file", str(WORK / "prep" / "gitinput")],
             env=ssh_env, capture_output=True, text=True,
         )  # fmt: skip
         log(f"== nix flake archive (the git input sources): rc={done.returncode}\n{done.stderr[-300:]}")
+        if done.returncode != 0:
+            raise SystemExit(
+                "nix flake archive failed: the VM has no git input sources, so every case would fail offline"
+            )
         t = time.time()
         done = subprocess.run(
             ["nix", *FEATURES, "copy", "--no-check-sigs", "--to", "ssh-ng://root@127.0.0.1", *sorted(paths)],

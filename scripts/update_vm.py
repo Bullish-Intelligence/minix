@@ -8,10 +8,10 @@ The host makes a scratch channel. It never writes to a real repository and never
 
 - a bare copy of `pynix`, with one more scratch tag `pynix-v0.5.0-rc.93`. The tag has the tree of `pynix-v0.5.0`,
   and a changelog section with one line that names `home.sessionVariables`;
-- a bare `minix` repository with two scratch releases made by `scripts/release.sh --skip-status`: `v0.3.0-rc.91` (the
-  files of this checkout, so the check tests the commit under check) and `v0.3.0-rc.92` (one more commit: it pins
+- a bare `minix` repository with two scratch releases made by `scripts/release.sh --skip-status`: `v<version>-rc.91` (the
+  files of this checkout, so the check tests the commit under check) and `v<version>-rc.92` (one more commit: it pins
   `pynix-v0.5.0-rc.93` and adds the file `~/.config/minix/release` to a home that holds the `minix` package). The branch
-  `release` is at `v0.3.0-rc.92`;
+  `release` is at `v<version>-rc.92`;
 - a git config that maps the two public URLs to the scratch repositories (`insteadOf`). Only the host commands of this
   script read it, through `GIT_CONFIG_GLOBAL`. The `~/.gitconfig` of the owner is not read.
 
@@ -25,12 +25,12 @@ repositories, and writes the `~/.gitconfig` of the learner with the same `instea
 
 Cases (each prints `CHECK ok` or `CHECK FAIL` lines):
 
-- `init`: the `minix` command of `v0.3.0-rc.91` is on `PATH`; `minix init` offline writes `~/minix`; its lock holds the
-  revision of `v0.3.0-rc.91` with `ref=release`.
-- `apply1`: `minix apply` builds the home of `v0.3.0-rc.91`; the file of `v0.3.0-rc.92` is not there.
+- `init`: the `minix` command of `v<version>-rc.91` is on `PATH`; `minix init` offline writes `~/minix`; its lock holds the
+  revision of `v<version>-rc.91` with `ref=release`.
+- `apply1`: `minix apply` builds the home of `v<version>-rc.91`; the file of `v<version>-rc.92` is not there.
 - `update`: `minix update` prints the two release names, the age of nixpkgs, the changelog line of `pynix-v0.5.0-rc.93`,
-  and the next step. The lock holds the revision of `v0.3.0-rc.92` and the nested `pynix` at `-rc.93`.
-- `apply2`: `minix apply` builds and switches; the file of `v0.3.0-rc.92` is there; a second apply changes nothing.
+  and the next step. The lock holds the revision of `v<version>-rc.92` and the nested `pynix` at `-rc.93`.
+- `apply2`: `minix apply` builds and switches; the file of `v<version>-rc.92` is there; a second apply changes nothing.
 - `again`: a second `minix update` says that minix is up to date and prints no `pynix` line.
 
 Environment (all optional):
@@ -82,7 +82,9 @@ GROUPS = ["init", "apply1", "update", "apply2", "again"]
 
 MINIX_URL = "https://github.com/Bullish-Intelligence/minix"
 PYNIX_URL = "https://github.com/Bullish-Intelligence/pynix"
-R1, R2 = "v0.3.0-rc.91", "v0.3.0-rc.92"
+# `release.sh` checks that the tag names the version of `pyproject.toml`, so the scratch tags follow that version.
+VERSION = re.search(r'^version = "(.*)"', (ROOT / "pyproject.toml").read_text(), re.MULTILINE)[1]
+R1, R2 = f"v{VERSION}-rc.91", f"v{VERSION}-rc.92"
 PYNIX_OLD, PYNIX_NEW = "pynix-v0.5.0", "pynix-v0.5.0-rc.93"
 STAMP = "2026-10-21T12:00:00+00:00"  # a fixed date: the same inputs make the same commits, so a second run finds a warm store
 MARKER = ".config/minix/release"  # the visible change of R2, in the learner's home
@@ -158,7 +160,9 @@ def wait_quiet(limit: int = 7200) -> None:
 
 def g(cwd: Path, *args: str) -> str:
     """Run git in a scratch repository (a fixed identity and date, no global config)."""
-    return av.host(["git", *args], cwd=cwd, env={**av.git_env(), "GIT_AUTHOR_DATE": STAMP, "GIT_COMMITTER_DATE": STAMP}).stdout
+    return av.host(
+        ["git", *args], cwd=cwd, env={**av.git_env(), "GIT_AUTHOR_DATE": STAMP, "GIT_COMMITTER_DATE": STAMP}
+    ).stdout
 
 
 def channel_env(config: Path) -> dict[str, str]:
@@ -217,7 +221,12 @@ def prepare_repos() -> tuple[Path, Path, Path, Path]:
     FACTS["pynix_new"] = g(pynix, "rev-parse", f"{PYNIX_NEW}^{{commit}}").strip()
     tree_old = g(pynix, "rev-parse", f"{PYNIX_OLD}^{{commit}}:src").strip()
     tree_new = g(pynix, "rev-parse", f"{PYNIX_NEW}^{{commit}}:src").strip()
-    av.check("repos", "the src tree of the scratch tag equals the src tree of pynix-v0.5.0 (the pair check holds)", tree_old, tree_new)
+    av.check(
+        "repos",
+        "the src tree of the scratch tag equals the src tree of pynix-v0.5.0 (the pair check holds)",
+        tree_old,
+        tree_new,
+    )
     # minix: a new repository with the files of this checkout (the commit under check), and a bare repository for the channel.
     work_minix = repos / "minix-work"
     copy_checkout(work_minix)
@@ -264,7 +273,13 @@ def make_releases(clone: Path, minix: Path, config: Path) -> None:
     # The lock names only the public URL: the channel maps it to the scratch repository while the lock is made.
     av.host(["nix", *av.FEATURES, "flake", "update", "pynix"], cwd=clone, env=channel_env(config))
     g(clone, "add", "-A")
-    g(clone, "commit", "-q", "-m", "Scratch change for opt:minix-update: pin pynix-v0.5.0-rc.93, add the release marker file")
+    g(
+        clone,
+        "commit",
+        "-q",
+        "-m",
+        "Scratch change for opt:minix-update: pin pynix-v0.5.0-rc.93, add the release marker file",
+    )
     FACTS["r2"] = release(clone, R2, config)
     g(clone, "push", "-q", str(minix), R1, R2, f"{R2}^{{commit}}:refs/heads/release")
     FACTS["release_branch"] = g(minix, "rev-parse", "refs/heads/release").strip()
@@ -274,11 +289,18 @@ def make_releases(clone: Path, minix: Path, config: Path) -> None:
 def prove_channel(config: Path, pynix: Path) -> None:
     """Show that the public URLs lead to the scratch repositories, not to the source `pynix`."""
     out = av.host(["git", "ls-remote", "--tags", PYNIX_URL], cwd=pynix, env=channel_env(config)).stdout
-    av.check("channel", "the public pynix URL lists the scratch tag rc.93 through the channel", True, f"refs/tags/{PYNIX_NEW}" in out)
+    av.check(
+        "channel",
+        "the public pynix URL lists the scratch tag rc.93 through the channel",
+        True,
+        f"refs/tags/{PYNIX_NEW}" in out,
+    )
     av.log("   git ls-remote --tags " + PYNIX_URL + " (GIT_CONFIG_GLOBAL = the scratch config):")
     for line in out.splitlines():
         av.log("      " + line)
-    source = av.host(["git", "ls-remote", "--tags", SOURCE_PYNIX], env={"GIT_CONFIG_GLOBAL": str(Path.home() / ".gitconfig")}).stdout
+    source = av.host(
+        ["git", "ls-remote", "--tags", SOURCE_PYNIX], env={"GIT_CONFIG_GLOBAL": str(Path.home() / ".gitconfig")}
+    ).stdout
     av.check("channel", "the tag rc.93 is not in the source pynix", False, "rc.93" in source)
 
 
@@ -315,7 +337,9 @@ def prove_cache(before: dict[str, str]) -> None:
         fetch = entry / "FETCH_HEAD"
         source = fetch.read_text().split(" of ")[-1].strip() if fetch.is_file() and " of " in fetch.read_text() else "-"
         av.log(f"      gitv3/{entry.name}: from {source}; scratch refs {scratch_tags(entry)}")
-    av.check("cache", "the scratch cache holds git folders (the run used it)", True, git.is_dir() and any(git.iterdir()))
+    av.check(
+        "cache", "the scratch cache holds git folders (the run used it)", True, git.is_dir() and any(git.iterdir())
+    )
     fetcher = SCRATCH_NIX_CACHE / "fetcher-cache-v4.sqlite"
     downloads = -1
     if fetcher.is_file():
@@ -325,7 +349,9 @@ def prove_cache(before: dict[str, str]) -> None:
     av.check("cache", "the scratch cache holds no download (no file or tarball entry)", 0, downloads)
     after = owner_cache_state()
     changed = sorted(name for name in set(before) | set(after) if before.get(name) != after.get(name))
-    av.log(f"   owner Nix cache {OWNER_NIX_CACHE}: {len(before)} entries before, {len(after)} after; changed during the run: {changed}")
+    av.log(
+        f"   owner Nix cache {OWNER_NIX_CACHE}: {len(before)} entries before, {len(after)} after; changed during the run: {changed}"
+    )
     for name in changed:
         av.log(f"      {name}: mtime_ns {before.get(name)} -> {after.get(name)}")
     touched = [n for n in changed if n.startswith("gitv3/") and scratch_tags(OWNER_NIX_CACHE / n)]
@@ -351,7 +377,15 @@ def build_home(ws: Path, name: str, config: Path) -> tuple[Path, Path]:
     av.host(["git", "add", "-A"], cwd=ws, env=env)
     compiler = Path(
         av.host(
-            ["nix", *av.FEATURES, "build", "--print-out-paths", "--out-link", str(WORK / f"prep/links/{name}-compiler"), ".#compiler"],
+            [
+                "nix",
+                *av.FEATURES,
+                "build",
+                "--print-out-paths",
+                "--out-link",
+                str(WORK / f"prep/links/{name}-compiler"),
+                ".#compiler",
+            ],
             cwd=ws,
             env=env,
         ).stdout.split()[-1]
@@ -390,9 +424,18 @@ def prepare_homes(r1_pkg: Path, config: Path) -> tuple[dict[str, Path], set[str]
     av.host(["git", "add", "-A"], cwd=ws1, env=env)
     init_lock = (ws1 / "flake.lock").read_text()
     av.host(["nix", *av.FEATURES, "flake", "lock", "--offline"], cwd=ws1, env=env)
-    av.check("prepare", "the lock of minix init holds R1 with ref=release", (FACTS["r1"], "release"), (
-        lock_of(ws1)["nodes"]["minix"]["locked"]["rev"], lock_of(ws1)["nodes"]["minix"]["original"]["ref"]))
-    av.check("prepare", "nix flake lock --offline leaves the lock of init as it is", init_lock, (ws1 / "flake.lock").read_text())
+    av.check(
+        "prepare",
+        "the lock of minix init holds R1 with ref=release",
+        (FACTS["r1"], "release"),
+        (lock_of(ws1)["nodes"]["minix"]["locked"]["rev"], lock_of(ws1)["nodes"]["minix"]["original"]["ref"]),
+    )
+    av.check(
+        "prepare",
+        "nix flake lock --offline leaves the lock of init as it is",
+        init_lock,
+        (ws1 / "flake.lock").read_text(),
+    )
     paths: set[str] = set()
     outputs: dict[str, Path] = {}
     compiler1, home1 = build_home(ws1, "r1", config)
@@ -415,8 +458,12 @@ def prepare_homes(r1_pkg: Path, config: Path) -> tuple[dict[str, Path], set[str]
     FACTS["lock2_minix"] = lock2["nodes"]["minix"]["locked"]["rev"]
     FACTS["lock2_pynix"] = nested_pynix(lock2)
     av.check("prepare", "the lock after the host update holds R2", FACTS["r2"], FACTS["lock2_minix"])
-    av.check("prepare", "the nested pynix is the scratch tag rc.93", (PYNIX_NEW, FACTS["pynix_new"]), (
-        FACTS["lock2_pynix"]["locked"]["ref"].removeprefix("refs/tags/"), FACTS["lock2_pynix"]["locked"]["rev"]))
+    av.check(
+        "prepare",
+        "the nested pynix is the scratch tag rc.93",
+        (PYNIX_NEW, FACTS["pynix_new"]),
+        (FACTS["lock2_pynix"]["locked"]["ref"].removeprefix("refs/tags/"), FACTS["lock2_pynix"]["locked"]["rev"]),
+    )
     nixpkgs = json.loads(
         av.nix("flake", "archive", "--json", "--dry-run", "--no-write-lock-file", ".", cwd=ws1).stdout
     )["inputs"]["minix"]["inputs"]["nixpkgs"]["path"]
@@ -440,7 +487,9 @@ def case_init(ctx: dict) -> None:
     found = av.sh("readlink -f $(command -v minix)", show=False).out.strip()
     check = av.check
     check("init", "the minix command on PATH is the package of R1", resolved(ctx["r1_pkg"]) + "/bin/minix", found)
-    source = json.loads(av.sh("cat $(dirname $(readlink -f $(command -v minix)))/../share/minix/source.json", show=False).out)
+    source = json.loads(
+        av.sh("cat $(dirname $(readlink -f $(command -v minix)))/../share/minix/source.json", show=False).out
+    )
     check("init", "share/minix/source.json names the revision of R1", FACTS["r1"], source.get("rev"))
     r = av.minix("init", "init", where="~")
     check("init", "init exits 0", 0, r.rc)
@@ -449,7 +498,12 @@ def case_init(ctx: dict) -> None:
     check("init", "the lock holds the revision of R1", FACTS["r1"], locked.get("rev"))
     check("init", "the lock follows the branch release", "release", original.get("ref"))
     check("init", "the lock names the public URL", MINIX_URL, original.get("url"))
-    check("init", "the lock holds pynix at pynix-v0.5.0", PYNIX_OLD, nested_pynix(lock)["locked"]["ref"].removeprefix("refs/tags/"))
+    check(
+        "init",
+        "the lock holds pynix at pynix-v0.5.0",
+        PYNIX_OLD,
+        nested_pynix(lock)["locked"]["ref"].removeprefix("refs/tags/"),
+    )
     av.put("minix/home.py", home_py())
 
 
@@ -462,8 +516,12 @@ def case_apply1(ctx: dict) -> None:
     r = av.minix("apply", "apply R1", then="true")
     fields = r.fields()
     av.check("apply1", "the apply exits 0", "0", fields.get("RC"))
-    av.check("apply1", "the apply built and switched", True, "applied: the home runs, and its units are healthy" in r.lines)
-    av.check("apply1", "the generation is the home that the host built for R1", resolved(ctx["homes"]["r1"]), generation())
+    av.check(
+        "apply1", "the apply built and switched", True, "applied: the home runs, and its units are healthy" in r.lines
+    )
+    av.check(
+        "apply1", "the generation is the home that the host built for R1", resolved(ctx["homes"]["r1"]), generation()
+    )
     marker = av.sh(f"cat ~/{MARKER} 2>&1; echo rc=$?", show=False).out
     av.check("apply1", "the visible change of R2 is absent", True, "rc=1" in marker.splitlines()[-1:][0])
     editor = av.sh("bash -lc 'echo EDITOR=$EDITOR'", show=False).out.strip()
@@ -480,14 +538,31 @@ def case_update(ctx: dict) -> None:
     first = lines[0] if lines else ""
     av.check("update", "line 1 names the two releases", f"minix {R1} -> {R2}", first)
     age = lines[1] if len(lines) > 1 else ""
-    av.check("update", "line 2 is the nixpkgs age line", True, bool(re.fullmatch(r"nixpkgs [0-9a-f]{8}, \d+ days? old", age)))
-    av.check("update", "line 3 names the changelog and the option", f"{PYNIX_NEW} changes options that home.py sets:", lines[2] if len(lines) > 2 else "")
-    av.check("update", "line 4 is the changelog line, with the name that sets it", f"  {CHANGE_LINE}  [Home]", lines[3] if len(lines) > 3 else "")
+    av.check(
+        "update", "line 2 is the nixpkgs age line", True, bool(re.fullmatch(r"nixpkgs [0-9a-f]{8}, \d+ days? old", age))
+    )
+    av.check(
+        "update",
+        "line 3 names the changelog and the option",
+        f"{PYNIX_NEW} changes options that home.py sets:",
+        lines[2] if len(lines) > 2 else "",
+    )
+    av.check(
+        "update",
+        "line 4 is the changelog line, with the name that sets it",
+        f"  {CHANGE_LINE}  [Home]",
+        lines[3] if len(lines) > 3 else "",
+    )
     av.check("update", "line 5 names the next step", "next: run minix apply to use it", lines[-1] if lines else "")
     lock = read_lock_vm()
     av.check("update", "the lock holds the revision of R2", FACTS["r2"], lock["nodes"]["minix"]["locked"]["rev"])
     pynix = nested_pynix(lock)["locked"]
-    av.check("update", "the nested pynix is at rc.93", (PYNIX_NEW, FACTS["pynix_new"]), (pynix["ref"].removeprefix("refs/tags/"), pynix["rev"]))
+    av.check(
+        "update",
+        "the nested pynix is at rc.93",
+        (PYNIX_NEW, FACTS["pynix_new"]),
+        (pynix["ref"].removeprefix("refs/tags/"), pynix["rev"]),
+    )
     av.check("update", "the VM and the host made the same lock", lock_of(ctx["ws"][1]), lock)
     av.check("update", "the VM output equals the output of the host", lines_of(FACTS["host_update_output"]), lines)
     ctx["lock_after_update"] = av.sh("cat ~/minix/flake.lock", show=False).out
@@ -498,8 +573,12 @@ def case_update(ctx: dict) -> None:
 def case_apply2(ctx: dict) -> None:
     r = av.minix("apply", "apply R2", then="true")
     av.check("apply2", "the apply exits 0", "0", r.fields().get("RC"))
-    av.check("apply2", "the apply built and switched", True, "applied: the home runs, and its units are healthy" in r.lines)
-    av.check("apply2", "the generation is the home that the host built for R2", resolved(ctx["homes"]["r2"]), generation())
+    av.check(
+        "apply2", "the apply built and switched", True, "applied: the home runs, and its units are healthy" in r.lines
+    )
+    av.check(
+        "apply2", "the generation is the home that the host built for R2", resolved(ctx["homes"]["r2"]), generation()
+    )
     marker = av.sh(f"cat ~/{MARKER}", show=False).out
     av.check("apply2", "the visible change of R2 is present", f"{R2}\n", marker)
     found = av.sh("readlink -f $(command -v minix)", show=False).out.strip()
@@ -508,7 +587,9 @@ def case_apply2(ctx: dict) -> None:
     av.check("apply2", "the second apply exits 0", 0, again.rc)
     av.check("apply2", "the second apply says nothing to change", True, "nothing to change" in again.lines)
     saved = av.sh("cd ~/minix && git log -1 --format=%s; git status --porcelain", show=False).lines
-    av.check("apply2", "the apply saved flake.lock and left a clean tree", True, len(saved) == 1 and "flake.lock" in saved[0])
+    av.check(
+        "apply2", "the apply saved flake.lock and left a clean tree", True, len(saved) == 1 and "flake.lock" in saved[0]
+    )
 
 
 def case_again(ctx: dict) -> None:
@@ -520,7 +601,9 @@ def case_again(ctx: dict) -> None:
     av.check("again", "line 1 says that minix is up to date", f"minix is up to date ({R2})", lines[0] if lines else "")
     av.check("again", "the output has no pynix line", [], [line for line in lines if "pynix" in line])
     av.check("again", "the lock did not change", before, av.sh("cat ~/minix/flake.lock", show=False).out)
-    av.check("again", "the last line names the next step", "next: run minix apply to use it", lines[-1] if lines else "")
+    av.check(
+        "again", "the last line names the next step", "next: run minix apply to use it", lines[-1] if lines else ""
+    )
 
 
 def stage(paths: set[str], workspaces: list[Path], repos: list[Path], config: Path) -> list[str]:
@@ -529,12 +612,14 @@ def stage(paths: set[str], workspaces: list[Path], repos: list[Path], config: Pa
     t = time.time()
     for ws in workspaces:
         done = subprocess.run(
-            ["nix", *av.FEATURES, "flake", "archive", "--to", "ssh-ng://root@127.0.0.1", "--no-write-lock-file", str(ws)],
+            ["nix", *av.FEATURES, "flake", "archive", "--no-check-sigs", "--to", "ssh-ng://root@127.0.0.1", "--no-write-lock-file", str(ws)],
             env=ssh_env, capture_output=True, text=True,
         )  # fmt: skip
         av.log(f"== nix flake archive {ws.name}: rc={done.returncode}, {time.time() - t:.0f} s\n{done.stderr[-300:]}")
         if done.returncode != 0:
-            raise SystemExit("nix flake archive failed")
+            raise SystemExit(
+                "nix flake archive failed: the VM has no sources of the lock, so every case would fail offline"
+            )
     store_repos = []
     for repo in repos:
         out = av.host(["nix", *av.FEATURES, "store", "add", "--name", repo.name, str(repo)]).stdout.strip()
@@ -545,7 +630,9 @@ def stage(paths: set[str], workspaces: list[Path], repos: list[Path], config: Pa
         ["nix", *av.FEATURES, "copy", "--no-check-sigs", "--to", "ssh-ng://root@127.0.0.1", *everything],
         env=ssh_env, capture_output=True, text=True,
     )  # fmt: skip
-    av.log(f"== nix copy of {len(everything)} paths: rc={done.returncode}, {time.time() - t:.0f} s\n{done.stderr[-300:]}")
+    av.log(
+        f"== nix copy of {len(everything)} paths: rc={done.returncode}, {time.time() - t:.0f} s\n{done.stderr[-300:]}"
+    )
     if done.returncode != 0:
         raise SystemExit("nix copy failed")
     return store_repos
@@ -555,7 +642,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="The VM check opt:minix-update.")
     parser.add_argument("--cases", default=",".join(GROUPS), help="comma list of: " + ", ".join(GROUPS))
     parser.add_argument("--keep-vm", action="store_true", help="debug: leave the VM running at the end")
-    parser.add_argument("--prepare-only", action="store_true", help="debug: make the repositories, packages, homes, and VM only")
+    parser.add_argument(
+        "--prepare-only", action="store_true", help="debug: make the repositories, packages, homes, and VM only"
+    )
     args = parser.parse_args()
     groups = args.cases.split(",")
     WORK.mkdir(parents=True, exist_ok=True)
@@ -581,7 +670,12 @@ def main() -> int:
     source = json.loads((r1_pkg / "share/minix/source.json").read_text())
     av.log(f"== R1 package {r1_pkg}; source.json {source}")
     av.check("prepare", "source.json of the R1 package names the R1 revision", FACTS["r1"], source.get("rev"))
-    av.check("prepare", "source.json of the R2 package names the R2 revision", FACTS["r2"], json.loads((r2_pkg / "share/minix/source.json").read_text()).get("rev"))
+    av.check(
+        "prepare",
+        "source.json of the R2 package names the R2 revision",
+        FACTS["r2"],
+        json.loads((r2_pkg / "share/minix/source.json").read_text()).get("rev"),
+    )
     homes, paths, workspaces, nixpkgs = prepare_homes(r1_pkg, config)
     av.OUTPUTS.update(homes)
     paths |= av.closure(r2_pkg)
@@ -625,7 +719,13 @@ def main() -> int:
         av.put(".gitconfig", gitconfig(store_repos[0], store_repos[1]))
         av.RESULTS["times"]["prepare and stage"] = round(time.time() - started, 1)
         ctx = {"r1_pkg": r1_pkg, "r2_pkg": r2_pkg, "homes": homes, "ws": workspaces}
-        cases = {"init": case_init, "apply1": case_apply1, "update": case_update, "apply2": case_apply2, "again": case_again}
+        cases = {
+            "init": case_init,
+            "apply1": case_apply1,
+            "update": case_update,
+            "apply2": case_apply2,
+            "again": case_again,
+        }
         for group in GROUPS:
             if group not in groups:
                 continue
@@ -657,11 +757,15 @@ def finish(started: float, forced: int | None = None) -> int:
     av.RESULTS["counts"] = counts
     av.RESULTS["total_s"] = round(time.time() - started, 1)
     (LOGS / "results.json").write_text(json.dumps(av.RESULTS, indent=2, default=str) + "\n")
-    av.log(f"\n{len(av.RESULTS['checks']) - len(failed)} of {len(av.RESULTS['checks'])} checks ok, {len(failed)} failed, {av.RESULTS['total_s']} s")
+    av.log(
+        f"\n{len(av.RESULTS['checks']) - len(failed)} of {len(av.RESULTS['checks'])} checks ok, {len(failed)} failed, {av.RESULTS['total_s']} s"
+    )
     for case, row in counts.items():
         av.log(f"   {case}: {row['ok']} ok, {row['fail']} failed")
     for item in failed:
-        av.log(f"FAIL [{item['case']}] {item['check']}: expected {item['expected']!r}, actual {str(item['actual'])[:200]!r}")
+        av.log(
+            f"FAIL [{item['case']}] {item['check']}: expected {item['expected']!r}, actual {str(item['actual'])[:200]!r}"
+        )
     av.log("PASS" if not failed else "FAIL")
     return forced if forced is not None else (1 if failed else 0)
 
