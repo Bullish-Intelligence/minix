@@ -84,24 +84,15 @@ def unit(
     desktop: bool = False,
     restart_delay: str = "",
 ) -> Iterator[Model]:
-    """The two Home Manager values of one user unit (a flat field and an extra key of `Service` merge badly: G-S14-1).
+    """The one Home Manager value of a user unit.
 
     `environment` becomes `Environment=` lines. `desktop` starts the unit with the graphical session (`PartOf`, `After`,
-    and `WantedBy` name `graphical-session.target`). `restart_delay` is `RestartSec` (009-D46, SG39).
+    and `WantedBy` name `graphical-session.target`). `restart_delay` is `RestartSec` (009-D46).
     """
-    # `Environment` is a typed flat field of the generated class. It must sit in this first value: inside the `Service`
-    # dict of the second value it is moved to the flat field and then lost (observed, SG39).
+    # The typed flat fields and the extra keys of one head (`Service`, `Unit`) join key by key (pynix 0.3.0).
+    # Each key sits in one place only: the join keeps the extra key when both set the same leaf.
     flat: dict[str, object] = (
         {"Service_Environment": [_environment_line(k, v) for k, v in environment.items()]} if environment else {}
-    )
-    yield HmSystemdUser(
-        services={
-            name: User_Services_Value(
-                Unit_Description=f"minix service {name}",
-                Service_ExecStart=exec_start,
-                **flat,
-            )
-        }
     )
     service: dict[str, JsonValue] = {"Restart": restart}
     if working_dir:
@@ -112,6 +103,9 @@ def unit(
     yield HmSystemdUser(
         services={
             name: User_Services_Value(
+                Unit_Description=f"minix service {name}",
+                Service_ExecStart=exec_start,
+                **flat,
                 Service=service,
                 **({"Unit": {"PartOf": [target], "After": [target]}} if desktop else {}),
                 Install={"WantedBy": [target]},

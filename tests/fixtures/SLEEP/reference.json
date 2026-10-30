@@ -9,6 +9,11 @@
    "value": {
     "services": {
      "web": {
+      "Install": {
+       "WantedBy": [
+        "default.target"
+       ]
+      },
       "Service": {
        "ExecStart": {
         "__nixdantic_ref__": {
@@ -24,32 +29,11 @@
           " 5"
          ]
         }
-       }
+       },
+       "Restart": "on-failure"
       },
       "Unit": {
        "Description": "minix service web"
-      }
-     }
-    }
-   },
-   "version": 1
-  },
-  {
-   "path": [
-    "systemd",
-    "user"
-   ],
-   "source": "home.py:7 (Service)",
-   "value": {
-    "services": {
-     "web": {
-      "Install": {
-       "WantedBy": [
-        "default.target"
-       ]
-      },
-      "Service": {
-       "Restart": "on-failure"
       }
      }
     }

@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 import pytest
+from nixdantic import supplied
 from pydantic import ValidationError
 
 from minix_config import (
@@ -130,10 +131,36 @@ def test_service_environment_restart_delay_and_desktop() -> None:
         starts_with="desktop",
     )
     first, second = (list(s.emit()) for s in (plain, tuned))
-    assert len(first) == len(second) == 2
+    assert len(first) == len(second) == 1
     unit = json.dumps([v.model_dump(exclude_unset=True) for v in second], default=str)
     assert "Service_Environment" in unit and "PORT=8080" in unit and '\\"NAME=a b\\"' in unit.replace("\\\\", "\\")
     assert "graphical-session.target" in unit and "RestartSec" in unit
+
+
+def test_service_emits_one_value_with_every_key() -> None:
+    """pynix 0.3.0 joins the typed fields and the extra keys of one head, so one value holds the whole unit."""
+    service = Service(
+        "web",
+        program=pkgs.python3,
+        environment={"PORT": "8080"},
+        restart_delay="3s",
+        starts_with="desktop",
+    )
+    emitted = list(service.emit())
+    assert len(emitted) == 1
+    wire: Any = supplied(emitted[0])
+    web = wire["services"]["web"]
+    assert set(web) == {"Unit", "Service", "Install"}
+    assert web["Unit"] == {
+        "Description": "minix service web",
+        "PartOf": ["graphical-session.target"],
+        "After": ["graphical-session.target"],
+    }
+    assert set(web["Service"]) == {"ExecStart", "Environment", "Restart", "RestartSec"}
+    assert web["Service"]["Environment"] == ["PORT=8080"]
+    assert web["Service"]["Restart"] == "on-failure"
+    assert web["Service"]["RestartSec"] == "3s"
+    assert web["Install"] == {"WantedBy": ["graphical-session.target"]}
 
 
 @pytest.mark.parametrize("delay", ["3", "3s", "500ms", "1min", "2h"])
