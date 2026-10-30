@@ -80,6 +80,8 @@ def unit(
     exec_start: str | Text,
     restart: str,
     *,
+    description: str = "",
+    environment_file: str = "",
     environment: dict[str, str] | None = None,
     desktop: bool = False,
     restart_delay: str = "",
@@ -90,6 +92,7 @@ def unit(
     only_if_virtualization: str = "",
     after: list[str] | None = None,
     wants: list[str] | None = None,
+    requires: list[str] | None = None,
     pre_start: list[Text] | None = None,
     timeout_start: str = "",
     kill_mode: str = "control-group",
@@ -102,7 +105,7 @@ def unit(
 
     `environment` becomes `Environment=` lines. `desktop` starts the unit with the graphical session (`PartOf`, `After`,
     and `WantedBy` name `graphical-session.target`). `restart_delay` is `RestartSec` (009-D46). The other keywords hold
-    systemd text that is ready to write (`working_dir`, the paths, and the unit names). A default or empty value writes
+    systemd text that is ready to write (`description`, `environment_file`, `working_dir`, the paths, and the unit names). A default or empty value writes
     no key. `timer` holds the keys of a `[Timer]` section: the value then also holds a timer unit of the same name, and
     the timer (not the service) is wanted by `timers.target`.
     """
@@ -123,6 +126,8 @@ def unit(
         service["ExecStartPre"] = pre_start
     if timeout_start:
         service["TimeoutStartSec"] = timeout_start
+    if environment_file:
+        service["EnvironmentFile"] = environment_file
     if kill_mode != "control-group":
         service["KillMode"] = kill_mode
     if no_restart_on_exit:
@@ -134,6 +139,8 @@ def unit(
         head["After"] = list(dict.fromkeys([*([target] if desktop else []), *(after or [])]))
     if wants:
         head["Wants"] = list(dict.fromkeys(wants))
+    if requires:
+        head["Requires"] = list(dict.fromkeys(requires))
     if only_if_exists:
         head["ConditionPathExists"] = only_if_exists
     if only_if_glob:
@@ -148,7 +155,7 @@ def unit(
     yield HmSystemdUser(
         services={
             name: User_Services_Value(
-                Unit_Description=f"minix service {name}",
+                Unit_Description=description or f"minix service {name}",
                 Service_ExecStart=exec_start,
                 **flat,
                 Service=service,

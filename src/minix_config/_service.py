@@ -7,7 +7,7 @@ import shlex
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, overload
 
-from nixdantic import Expect, Model, Text
+from nixdantic import Expect, Model, Native, Text
 from pydantic import AfterValidator, Field, StringConstraints, model_validator
 from pydantic_core import PydanticCustomError
 from pynix_pkgs._pkgref import Pkg, Prog
@@ -15,7 +15,7 @@ from pynix_pkgs._pkgref import Pkg, Prog
 from . import _base
 from ._base import Component, Restart, ServiceName, unit
 from ._keys import Key, Mods, Part
-from ._run import Run
+from ._run import Program, Run
 
 __all__ = ["Bind", "Service", "Step", "Timer"]
 
@@ -106,6 +106,13 @@ def _condition_path(value: str) -> str:
     return "!" + _path_text(value[1:]) if value.startswith("!") else _path_text(value)
 
 
+def _environment_file(value: str) -> str:
+    """The systemd text of `EnvironmentFile`: a leading `-` means that the file may be missing. Empty stays empty."""
+    if not value:
+        return ""
+    return "-" + _path_text(value[1:]) if value.startswith("-") else _path_text(value)
+
+
 def _unit_name(value: str) -> str:
     """The unit name for a bare name (`db` is `db.service`). A name with a unit suffix stays as it is."""
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.@:-]*", value):
@@ -133,19 +140,33 @@ ConditionPath = Annotated[
     Expect('an absolute path or a path that starts with "~/", with a leading "!" to negate'),
     _checked(_condition_path),
 ]
+EnvironmentFilePath = Annotated[
+    str,
+    Expect('an absolute path or a path that starts with "~/", with a leading "-" when the file may be missing'),
+    _checked(_environment_file),
+]
+Description = Annotated[str, Expect("one line of text"), AfterValidator(_one_line)]
 UnitName = Annotated[str, Expect('a unit name such as "db" or "network.target"'), _checked(_unit_name)]
 Calendar = Annotated[
     str, Expect('a calendar time such as "daily", "hourly", or "Mon *-*-* 09:00"'), AfterValidator(_calendar)
 ]
 
 
-def _run(program: Pkg, file: str, args: str) -> Run:
+def _run(program: Pkg | Native, file: str, args: str) -> Run:
     return Run._make(program, file, tuple(shlex.split(args)))
 
 
-def _check_main(program: Pkg, file: str, field: str) -> None:
-    """009-D36: a package with no main program needs `file=`."""
-    if not file and not isinstance(program, Prog):
+def _check_main(program: Pkg | Native, file: str, field: str) -> None:
+    """009-D36: a package with no main program needs `file=`. A `Native` package always needs it."""
+    if file:
+        return
+    if isinstance(program, Native):
+        raise PydanticCustomError(
+            "no_main_program",
+            'must name the file: file="NAME". The Native package from `{file}` has no known main program',
+            {"file": program.file},
+        )
+    if not isinstance(program, Prog):
         raise PydanticCustomError(
             "no_main_program",
             'must be a package with a main program, and `{attr}` has none. Name the file: file="NAME"'
@@ -160,20 +181,21 @@ def _has_main(package: Pkg) -> Pkg:
     return package
 
 
-def _warn_shell(where: str, field: str, program: Pkg, args: str) -> None:
+def _warn_shell(where: str, field: str, program: Pkg | Native, args: str, file: str = "") -> None:
     """009-D37: no shell runs, so `|`, `&`, `;`, `>`, `<` are plain arguments. The loader prints the warning."""
     found = sorted({c for c in args if c in _SHELL})
-    if found and program.attr not in _SHELLS:
+    name = file or (program.attr if isinstance(program, Pkg) else "")  # a `Native` has a list of names in `attr`
+    if found and name not in _SHELLS:
         _base.WARNINGS.append((where, field, "".join(found)))
 
 
 class Step(Part):
     """One command that runs before a service starts. The service starts when every step has succeeded."""
 
-    program: Pkg
-    """The program to run: `pkgs.NAME`. Basix finds its file (the main program of the package)."""
+    program: Program
+    """The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`."""
     file: str = ""
-    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`."""
+    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package."""
     args: str = ""
     """The arguments as one string, for example "-sf http://localhost:8080". Spaces split the words; quotes group them. No shell runs. A word that starts with ~/ names a path in your home."""
 
@@ -183,14 +205,14 @@ class Step(Part):
         def __init__(self, *, program: Prog, args: str = "") -> None: ...
 
         @overload
-        def __init__(self, *, program: Pkg, file: str, args: str = "") -> None: ...
+        def __init__(self, *, program: Pkg | Native, file: str, args: str = "") -> None: ...
 
         def __init__(self, *, program, file="", args="") -> None:
             """One command that runs before a service starts. The service starts when every step has succeeded.
 
             Args:
-                program: The program to run: `pkgs.NAME`. Basix finds its file (the main program of the package).
-                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`.
+                program: The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`.
+                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package.
                 args: The arguments as one string, for example "-sf http://localhost:8080". No shell runs. A word that starts with ~/ names a path in your home.
             """
             ...
@@ -203,7 +225,7 @@ class Step(Part):
     def model_post_init(self, context: object, /) -> None:
         from ._base import _learner_site
 
-        _warn_shell(_learner_site(), "Step.args", self.program, self.args)
+        _warn_shell(_learner_site(), "Step.args", self.program, self.args, self.file)
 
     def command_text(self) -> Text:
         return _run(self.program, self.file, self.args).systemd()
@@ -254,18 +276,22 @@ class Service(Component):
     _positional: ClassVar[tuple[str, ...]] = ("name",)
     name: ServiceName
     """The name of the service. Read its log with `journalctl --user -u NAME`."""
-    program: Pkg
-    """The program to run: `pkgs.NAME`. Basix finds its file (the main program of the package)."""
+    program: Program
+    """The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`."""
     file: str = ""
-    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`."""
+    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package."""
     args: str = ""
     """The arguments as one string, for example "-m http.server 8080". Spaces split the words; quotes group them. No shell runs. A word that starts with ~/ names a path in your home."""
+    description: Description = ""
+    """One line of text for `systemctl --user status`. Empty means "minix service NAME"."""
     restart: Restart = "on-failure"
     """When systemd starts the service again, for example "on-failure" or "always"."""
     restart_delay: RestartDelay = ""
     """The wait before a restart, for example "3s". Empty means the systemd default (100 ms)."""
     environment: Environment = {}
     """Variables that the program sees, for example {"PORT": "8080"}."""
+    environment_file: EnvironmentFilePath = ""
+    """A file of lines NAME=VALUE that the program sees as variables, for example "~/.config/app/env". A leading "-" means the service starts when the file is missing: "-~/.config/app/env". Empty means no file."""
     starts_with: Literal["login", "desktop"] = "login"
     """When the service starts: "login" (default) or "desktop", with your graphical session."""
     type: Literal["simple", "exec", "forking", "oneshot", "notify", "dbus", "idle"] = "simple"
@@ -282,6 +308,8 @@ class Service(Component):
     """Units that start before this service, for example ["db"]. A bare name means NAME.service, another Service. A user unit cannot order itself after a system unit, because the user manager does not see the units of the system. To wait for a thing of the system, use an `only_if_*` condition or a `pre_start` step that waits with a bound."""
     wants: list[UnitName] = []
     """Units that this service pulls in when it starts, for example ["db"]. A bare name means NAME.service, another Service. A user unit cannot order itself after, or pull in, a system unit, because the user manager does not see the units of the system. To wait for a thing of the system, use an `only_if_*` condition or a `pre_start` step that waits with a bound."""
+    requires: list[UnitName] = []
+    """Units that this service needs, for example ["db"]. The service pulls them in when it starts. It does not start when one of them fails to start. A bare name means NAME.service, another Service. `requires` does not set the order: add the same units to `after`. A user unit cannot depend on a system unit, because the user manager does not see the units of the system."""
     pre_start: list[
         Annotated[Step, Expect('a Step object, for example Step(program=pkgs.curl, args="-sf http://localhost:8080")')]
     ] = []
@@ -309,9 +337,11 @@ class Service(Component):
             *,
             program: Prog,
             args: str = "",
+            description: Description = "",
             restart: Restart = "on-failure",
             restart_delay: RestartDelay = "",
             environment: Environment = {},
+            environment_file: EnvironmentFilePath = "",
             starts_with: Literal["login", "desktop"] = "login",
             type: Literal["simple", "exec", "forking", "oneshot", "notify", "dbus", "idle"] = "simple",
             working_dir: WorkingDir = "",
@@ -320,6 +350,7 @@ class Service(Component):
             only_if_virtualization: Virtualization = "",
             after: list[UnitName] = [],
             wants: list[UnitName] = [],
+            requires: list[UnitName] = [],
             pre_start: list[Step] = [],
             timeout_start: StartTime = "",
             kill_mode: Literal["control-group", "mixed", "process"] = "control-group",
@@ -335,12 +366,14 @@ class Service(Component):
             name: ServiceName,
             /,
             *,
-            program: Pkg,
+            program: Pkg | Native,
             file: str,
             args: str = "",
+            description: Description = "",
             restart: Restart = "on-failure",
             restart_delay: RestartDelay = "",
             environment: Environment = {},
+            environment_file: EnvironmentFilePath = "",
             starts_with: Literal["login", "desktop"] = "login",
             type: Literal["simple", "exec", "forking", "oneshot", "notify", "dbus", "idle"] = "simple",
             working_dir: WorkingDir = "",
@@ -349,6 +382,7 @@ class Service(Component):
             only_if_virtualization: Virtualization = "",
             after: list[UnitName] = [],
             wants: list[UnitName] = [],
+            requires: list[UnitName] = [],
             pre_start: list[Step] = [],
             timeout_start: StartTime = "",
             kill_mode: Literal["control-group", "mixed", "process"] = "control-group",
@@ -366,9 +400,11 @@ class Service(Component):
             program,
             file="",
             args="",
+            description="",
             restart="on-failure",
             restart_delay="",
             environment={},
+            environment_file="",
             starts_with="login",
             type="simple",
             working_dir="",
@@ -377,6 +413,7 @@ class Service(Component):
             only_if_virtualization="",
             after=[],
             wants=[],
+            requires=[],
             pre_start=[],
             timeout_start="",
             kill_mode="control-group",
@@ -389,12 +426,14 @@ class Service(Component):
 
             Args:
                 name: The name of the service. Read its log with `journalctl --user -u NAME`.
-                program: The program to run: `pkgs.NAME`. Basix finds its file (the main program of the package).
-                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`.
+                program: The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`.
+                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package.
                 args: The arguments as one string, for example "-m http.server 8080". No shell runs. A word that starts with ~/ names a path in your home.
+                description: One line of text for `systemctl --user status`. Empty means "minix service NAME".
                 restart: When systemd starts the service again, for example "on-failure" or "always".
                 restart_delay: The wait before a restart, for example "3s". Empty means the systemd default (100 ms).
                 environment: Variables that the program sees, for example {"PORT": "8080"}.
+                environment_file: A file of lines NAME=VALUE that the program sees as variables, for example "~/.config/app/env". A leading "-" means the service starts when the file is missing: "-~/.config/app/env". Empty means no file.
                 starts_with: When the service starts: "login" (default) or "desktop", with your graphical session.
                 type: How systemd sees that the service is up, for example "exec" (up when the program has started) or "oneshot".
                 working_dir: The folder where the program runs, for example "~/work" or "/var/lib/app". Empty means the home folder.
@@ -403,6 +442,7 @@ class Service(Component):
                 only_if_virtualization: The kind of machine the service needs, for example "no", "vm", "container", or "!container". A failed condition skips the unit and does not fail it.
                 after: Units that start before this service, for example ["db"]. A bare name means NAME.service, another Service. A user unit cannot order itself after a system unit, because the user manager does not see the units of the system. To wait for a thing of the system, use an `only_if_*` condition or a `pre_start` step that waits with a bound.
                 wants: Units that this service pulls in when it starts, for example ["db"]. A bare name means NAME.service, another Service. A user unit cannot order itself after, or pull in, a system unit, because the user manager does not see the units of the system. To wait for a thing of the system, use an `only_if_*` condition or a `pre_start` step that waits with a bound.
+                requires: Units that this service needs, for example ["db"]. The service pulls them in when it starts. It does not start when one of them fails to start. A bare name means NAME.service, another Service. `requires` does not set the order: add the same units to `after`. A user unit cannot depend on a system unit, because the user manager does not see the units of the system.
                 pre_start: Commands that run in order before the program starts, for example [Step(program=pkgs.coreutils, file="sleep", args="2")]. The service does not start when a step fails.
                 timeout_start: How long the start may take, for example "90s" or "15min". "infinity" sets no limit. Empty means the systemd default.
                 kill_mode: What a stop ends: "control-group" (default, every process), "mixed", or "process" (the main process only).
@@ -425,14 +465,16 @@ class Service(Component):
 
     def model_post_init(self, context: object, /) -> None:
         super().model_post_init(context)
-        _warn_shell(self._where, "Service.args", self.program, self.args)
+        _warn_shell(self._where, "Service.args", self.program, self.args, self.file)
 
     def emit(self) -> Iterator[Model]:
         yield from unit(
             self.name,
             _run(self.program, self.file, self.args).systemd(),
             self.restart,
+            description=self.description.replace("%", "%%"),
             environment=self.environment,
+            environment_file=_environment_file(self.environment_file),
             desktop=self.starts_with == "desktop",
             restart_delay=self.restart_delay,
             kind=self.type,
@@ -442,6 +484,7 @@ class Service(Component):
             only_if_virtualization=self.only_if_virtualization,
             after=[_unit_name(n) for n in self.after],
             wants=[_unit_name(n) for n in self.wants],
+            requires=[_unit_name(n) for n in self.requires],
             pre_start=[step.command_text() for step in self.pre_start],
             timeout_start=self.timeout_start,
             kill_mode=self.kill_mode,

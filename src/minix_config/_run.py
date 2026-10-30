@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import re
 import shlex
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
-from nixdantic import Plain, Text
+from nixdantic import Expect, Native, Plain, Text
 from pydantic import ConfigDict
 from pynix_pkgs._pkgref import Exe, PackageError, Pkg, Prog
 
-__all__ = ["Run"]
+__all__ = ["Program", "Run"]
+
+Program = Annotated[
+    Pkg | Native, Expect('a package such as pkgs.NAME, or a Native package such as Native("pkg.nix", ["attr"])')
+]
+"""The program of a `Service` or `Step`: a package of the package list, or a package that a Nix file of the workspace gives."""
 
 
 class NoMainProgram(PackageError):
@@ -56,8 +61,8 @@ class Run(Plain):
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, use_attribute_docstrings=True)
 
-    program: Pkg
-    """The program: `pkgs.NAME`."""
+    program: Program
+    """The program: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])`."""
     file: str = ""
     """The file below `bin/`, when it is not the main program of the package."""
     args: list[str] = []
@@ -83,11 +88,13 @@ class Run(Plain):
         __init__.__pydantic_base_init__ = True
 
     @classmethod
-    def _make(cls, program: Pkg, file: str, args: tuple[str, ...]) -> Run:
+    def _make(cls, program: Pkg | Native, file: str, args: tuple[str, ...]) -> Run:
         return cls.model_validate({"program": program, "file": file, "args": list(args)})
 
     def _head(self) -> list:
-        return [Exe(attr=self.program.attr)] if not self.file else [self.program, f"/bin/{self.file}"]
+        if not self.file and isinstance(self.program, Pkg):
+            return [Exe(attr=self.program.attr)]
+        return [self.program, f"/bin/{self.file}"]
 
     def systemd(self) -> Text:
         """The `ExecStart` text: systemd quoting, no shell."""

@@ -417,3 +417,44 @@ def test_a_wrapper_in_a_wrapper_is_one_line(tmp_path: Path, capsys: pytest.Captu
         fail(tmp_path, text, capsys)
         == "home.py:4:49: Force(...) cannot hold Force(...): use one wrapper for one value."
     )
+
+
+@pytest.mark.parametrize(
+    ("text", "line"),
+    [
+        (
+            'home = Home(user="a", services=[Service("w", program=Native("pkg.nix", ["d"]))])\n',
+            'home.py:2:54: Service.program must name the file: file="NAME". The Native package from `pkg.nix` has no known main program.',
+        ),
+        (
+            'home = Home(user="a", services=[Service("w", program="curl", file="x")])\n',
+            'home.py:2:54: Service.program must be a package such as pkgs.NAME, or a Native package such as Native("pkg.nix", ["attr"]), found "curl".',
+        ),
+        (
+            'home = Home(user="a", services=[Service("w", program=pkgs.python3, requires=["a b"])])\n',
+            'home.py:2:78: Service.requires[0] must be a unit name such as "db" or "network.target", found "a b", found "a b".',
+        ),
+        (
+            'home = Home(user="a", services=[Service("w", program=pkgs.python3, description="a\\nb")])\n',
+            'home.py:2:80: Service.description must be on one line, and this value holds a line break, found "a\\nb".',
+        ),
+        (
+            'home = Home(user="a", services=[Service("w", program=pkgs.python3, environment_file="env")])\n',
+            'home.py:2:85: Service.environment_file must be an absolute path or start with ~/, found "env", found "env".',
+        ),
+    ],
+)
+def test_error_lines_of_native_and_the_unit_fields(
+    text: str, line: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert fail(tmp_path, IMPORT + text, capsys) == line
+
+
+def test_a_service_runs_a_native_package(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    text = 'home = Home(user="a", services=[Service("d", program=Native("pkg.nix", ["daemon"]), file="d")])\n'
+    code, err, data = run(tmp_path, IMPORT + text, capsys)
+    assert (code, err) == (0, "")
+    assert data is not None
+    exec_start = data["fragments"][0]["value"]["services"]["d"]["Service"]["ExecStart"]["__nixdantic_ref__"]
+    assert exec_start["parts"][1] == "/bin/d"
+    assert exec_start["parts"][0]["__nixdantic_ref__"] == {"kind": "native", "file": "pkg.nix", "attr": ["daemon"]}

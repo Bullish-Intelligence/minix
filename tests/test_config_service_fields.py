@@ -8,7 +8,7 @@ import pytest
 from nixdantic import supplied
 from pydantic import ValidationError
 
-from minix_config import Bind, Service, Step, pkgs
+from minix_config import Bind, Native, Service, Step, pkgs
 from minix_config import _base as base
 
 BASE = {"Description": "minix service web"}
@@ -71,6 +71,13 @@ def test_default_values_written_by_hand_write_no_key() -> None:
         ({"only_if_virtualization": "!container"}, "Unit", "ConditionVirtualization", "!container"),
         ({"after": ["db"]}, "Unit", "After", ["db.service"]),
         ({"wants": ["db", "x.timer"]}, "Unit", "Wants", ["db.service", "x.timer"]),
+        ({"requires": ["db", "x.socket"]}, "Unit", "Requires", ["db.service", "x.socket"]),
+        ({"description": "A web server"}, "Unit", "Description", "A web server"),
+        ({"description": "100% sure"}, "Unit", "Description", "100%% sure"),
+        ({"environment_file": "/etc/app/env"}, "Service", "EnvironmentFile", "/etc/app/env"),
+        ({"environment_file": "~/.config/app/env"}, "Service", "EnvironmentFile", "%h/.config/app/env"),
+        ({"environment_file": "-~/.config/app/env"}, "Service", "EnvironmentFile", "-%h/.config/app/env"),
+        ({"environment_file": "-/a/50%"}, "Service", "EnvironmentFile", "-/a/50%%"),
         ({"start_limit_interval": "60s"}, "Unit", "StartLimitIntervalSec", "60s"),
         ({"start_limit_burst": 5}, "Unit", "StartLimitBurst", 5),
     ],
@@ -214,6 +221,15 @@ def test_pre_start_refuses_a_plain_string() -> None:
         ({"after": ["a b"]}, 'after.0\n  must be a unit name such as "db" or "network.target", found "a b"'),
         ({"after": [".service"]}, "must be a unit name such as"),
         ({"wants": ["x\ny"]}, "wants.0\n  must be a unit name such as"),
+        ({"requires": ["a b"]}, 'requires.0\n  must be a unit name such as "db" or "network.target", found "a b"'),
+        ({"requires": "db"}, "requires\n  must be a list"),
+        ({"description": "a\nb"}, "description\n  must be on one line, and this value holds a line break"),
+        ({"description": 5}, "description\n  must be one line of text"),
+        ({"environment_file": "env"}, 'environment_file\n  must be an absolute path or start with ~/, found "env"'),
+        ({"environment_file": "-env"}, 'must be an absolute path or start with ~/, found "env"'),
+        ({"environment_file": "-"}, 'must be an absolute path or start with ~/, found ""'),
+        ({"environment_file": "/a\nb"}, "must be on one line, and this value holds a line break"),
+        ({"environment_file": 5}, 'environment_file\n  must be an absolute path or a path that starts with "~/"'),
         ({"timeout_start": "soon"}, 'must be a time such as "90s" or "15min", or "infinity"'),
         ({"start_limit_interval": "infinity"}, 'must be a time such as "10s", "500ms", or "1min"'),
         ({"start_limit_burst": 0}, "must be a whole number of 1 or more"),
@@ -229,6 +245,71 @@ def test_a_bad_value_gives_one_plain_line(fields: dict[str, Any], message: str) 
         make(**fields)
     assert caught.value.error_count() == 1
     assert message in str(caught.value)
+
+
+def test_requires_does_not_set_the_order() -> None:
+    web = wire(make(requires=["db"]))
+    assert "After" not in web["Unit"]
+
+
+def test_a_repeated_required_unit_joins_once() -> None:
+    assert wire(make(requires=["db", "db.service"]))["Unit"]["Requires"] == ["db.service"]
+
+
+def test_the_default_description_names_the_service() -> None:
+    assert wire(make())["Unit"]["Description"] == "minix service web"
+    assert wire(make(description=""))["Unit"]["Description"] == "minix service web"
+
+
+NATIVE = {"__nixdantic_ref__": {"kind": "native", "file": "pkg.nix", "attr": ["daemon"]}}
+
+
+def test_a_service_runs_a_native_package_by_its_file() -> None:
+    service = Service("d", program=Native("pkg.nix", ["daemon"]), file="d", args="--a ~/x")
+    assert parts(wire(service)["Service"]["ExecStart"]) == [NATIVE, "/bin/d", " --a", " %h/x"]
+
+
+def test_a_step_runs_a_native_package_by_its_file() -> None:
+    step = Step(program=Native("pkg.nix", ["daemon"]), file="d", args="-q")
+    assert list(step.command_text().parts) == [Native("pkg.nix", ["daemon"]), "/bin/d", " -q"]
+    web = wire(make(pre_start=[step]))
+    assert parts(web["Service"]["ExecStartPre"][0]) == [NATIVE, "/bin/d", " -q"]
+
+
+@pytest.mark.parametrize("make_one", [Service, Step])
+def test_a_native_package_without_a_file_gives_one_plain_line(make_one: Any) -> None:
+    name = ["d"] if make_one is Service else []
+    with pytest.raises(ValidationError) as caught:
+        make_one(*name, program=Native("pkg.nix", ["daemon"]))
+    assert caught.value.error_count() == 1
+    assert 'must name the file: file="NAME". The Native package from `pkg.nix` has no known main program' in str(
+        caught.value
+    )
+
+
+@pytest.mark.parametrize("make_one", [Service, Step])
+def test_a_wrong_program_names_both_forms(make_one: Any) -> None:
+    name = ["d"] if make_one is Service else []
+    with pytest.raises(ValidationError) as caught:
+        make_one(*name, program="curl", file="x")
+    assert caught.value.error_count() == 1
+    assert 'must be a package such as pkgs.NAME, or a Native package such as Native("pkg.nix", ["attr"])' in str(
+        caught.value
+    )
+
+
+def test_a_bind_still_takes_a_package_only() -> None:
+    with pytest.raises(ValidationError, match="must be a Pkg"):
+        Bind("SUPER", "T", program=Native("pkg.nix", ["daemon"]))  # ty: ignore[invalid-argument-type]
+
+
+def test_the_shell_warning_does_not_fail_on_a_native_package() -> None:
+    base.WARNINGS.clear()
+    Service("d", program=Native("pkg.nix", ["daemon"]), file="d", args="a | b")
+    Step(program=Native("pkg.nix", ["daemon"]), file="d", args="a | b")
+    Service("d", program=Native("pkg.nix", ["daemon"]), file="bash", args="-c 'a | b'")
+    assert [(field, chars) for _, field, chars in base.WARNINGS] == [("Service.args", "|"), ("Step.args", "|")]
+    base.WARNINGS.clear()
 
 
 def test_a_router_service_writes_the_whole_unit() -> None:
