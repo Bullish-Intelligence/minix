@@ -121,6 +121,34 @@ name from `pkgs`. A package of a pinned nixpkgs (`NixpkgsPin`) works the same wa
 packages. The Python package of an input exists after the first `minix apply` or `minix update` that sees the `Input`.
 Before that run, your editor cannot find the import.
 
+## Python code from a flake input
+
+`python="DIR"` makes the Python code of an input importable in `home.py`. `DIR` is a folder of the input, for example
+`"src"`. Use `"."` for the root of the input. The input can be a flake or not (`flake=False`).
+
+```python
+from minix_config import *
+from comps import motd
+
+home = Home(
+    user="learner",
+    inputs=[Input("comps", "github:me/comps", python="src")],
+    files=[motd("Welcome back")],
+)
+```
+
+Every folder of `DIR` with an `__init__.py` is a package. Every file `NAME.py` is a module. The name must not start with
+`_`. Two inputs must not give the same name. The name must not be one of `minix_config`, `pynix_NAME`, `pydantic`, or
+`nixdantic`, and must not be in the standard library.
+
+`flake.lock` pins the code. It changes only after `minix update comps`. The code can import the standard library,
+`pydantic`, `nixdantic`, `pynix_pkgs`, `pynix_native`, `minix_config`, and `pynix_hm`. It cannot import other packages.
+Write a package for both layers (minix and Basix) in two parts. Keep the shared part free of `minix_config` and
+`basix_config`.
+
+The code exists after the first `minix apply` or `minix update` that sees the `Input`. Before that run, your editor
+cannot find the import.
+
 ## Develop
 
 ```bash
