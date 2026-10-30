@@ -14,7 +14,7 @@ source and prints the line. It prints no Python traceback.
 An error in a file that home.py imports names that file and ends with `(from home.py:LINE)`. The file name is relative to
 the workspace, or to `.basix/pynix` for the code of an input package. The sites of the fragments use the same names.
 
-The output holds `"input_packages"` when the file has flake inputs: the `narHash` of each input package. `lib.home` checks
+The output holds `"input_packages"` when the file has flake inputs or inputs with Python code: the `narHash` of each input package. `lib.home` checks
 it against `flake.lock` at evaluation, so a lock that moved after the compile stops the evaluation.
 
 The generated input packages (`pynix_NAME`) and the name lists of a `NixpkgsPin` sit in `.basix/pynix` of the workspace.
@@ -496,12 +496,16 @@ def _check_inputs(source: Path, packages: Path) -> list[str]:
 
 
 def _input_packages(found: Found, packages: Path) -> dict[str, str]:
-    """The `narHash` of the package of each flake input, from `_generation.py`. `lib.home` checks it again at evaluation."""
+    """The `narHash` of the package of each flake input or input with Python code, from `_generation.py`.
+
+    `lib.home` checks it again at evaluation.
+    """
     from pynix_native import input_package_name, read_source
 
     record: dict[str, str] = {}
     for item in found.inputs:
-        have = read_source(packages / input_package_name(item.name) / "_generation.py") if item.flake else None
+        has_package = item.flake or item.python is not None
+        have = read_source(packages / input_package_name(item.name) / "_generation.py") if has_package else None
         if have and have.get("narHash"):
             record[item.name] = have["narHash"]
     return dict(sorted(record.items()))

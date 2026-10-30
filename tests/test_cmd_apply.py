@@ -476,6 +476,15 @@ def test_an_entry_without_inputs_builds_no_input_packages(setup: Setup) -> None:
     assert [c for c in setup.nix_calls("build") if c[-1] == ".#input-packages"] == []
 
 
+@pytest.mark.parametrize(("python", "builds"), [("", 0), (', python="src"', 1)])
+def test_a_source_input_builds_the_input_packages_only_with_python_code(setup: Setup, python: str, builds: int) -> None:
+    """The code of an input comes from the input packages, so a `flake=False` input with `python` needs the build."""
+    edit_home(setup, f'inputs = [Input("lib", "github:o/lib", flake=False{python})]\n')
+    assert apply(setup) == 0, setup.lines
+    assert len([c for c in setup.nix_calls("build") if c[-1] == ".#input-packages"]) == builds
+    assert ('pythonDirs = { lib = "src"; };' in (setup.ws / "flake.nix").read_text()) == bool(builds)
+
+
 def test_the_stub_writer_warns_in_plain_words(setup: Setup) -> None:
     edit_home(setup, INPUT_HOME)
     setup.world.input_names = None  # Nix could not read the inputs of the flake

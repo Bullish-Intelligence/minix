@@ -1,8 +1,8 @@
 """The stub writer: the managed `flake.nix` of a minix workspace (009-D3, CONCEPT Appendix C).
 
 The stub has one input `minix`. An `Input(...)` in the entry adds that input, with its `follows` (009-D51), and a
-`NixpkgsPin(...)` adds the input `nixpkgs-NAME` (009-D53). The stub text with no `Input` does not change when the entry
-changes in any other way. The compiler reads the calls from the syntax tree (`pynix_native.discover`), so one apply
+`NixpkgsPin(...)` adds the input `nixpkgs-NAME` (009-D53). An `Input` with `python=` also adds `pythonDirs` to the input
+packages. The stub text with no `Input` does not change when the entry changes in any other way. The compiler reads the calls from the syntax tree (`pynix_native.discover`), so one apply
 writes the stub, locks, makes the input packages, and compiles.
 
 The stub writer never edits a file that a learner wrote. It owns `flake.nix` and writes it only when the text changes.
@@ -277,6 +277,11 @@ def stub_text(
     modules = " ".join(
         f"{i.name} = [ {' '.join(_nix_string(m) for m in i.modules)} ];" for i in found.inputs if i.flake and i.modules
     )
+    python_dirs = " ".join(
+        f"{i.name} = {_nix_string(i.python)};"
+        for i in sorted(found.inputs, key=lambda i: i.name)
+        if i.python is not None
+    )
     body = [
         "  outputs = inputs@{ self, minix, ... }:",
         "    let",
@@ -288,6 +293,7 @@ def stub_text(
         "        inherit extraInputs;",
         f'        system = "{system}";',
         f"        modules = {{ {modules} }};" if modules else "        modules = { };",
+        *([f"        pythonDirs = {{ {python_dirs} }};"] if python_dirs else []),
         "      };",
         "      homeConfigurations = (minix.lib.home {",
         "        compiled = ./home.json;",

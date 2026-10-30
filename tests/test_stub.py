@@ -107,6 +107,26 @@ def test_input_that_is_not_a_flake() -> None:
     assert "modules = { };" in text  # no input package for a source folder
 
 
+def test_python_dirs_name_the_inputs_with_python_code() -> None:
+    """`Input(python=...)` adds `pythonDirs` (sorted by input name) to the input packages. A flake or not."""
+    source = (
+        'Input("tools", "github:o/tools", flake=False, python="lib")\n'
+        'Input("comps", "github:o/comps", python="src")\n'
+        'Input("plain", "github:o/plain")'
+    )
+    text, _ = text_of(source, {"comps": set(), "plain": set()})
+    assert '        pythonDirs = { comps = "src"; tools = "lib"; };\n      };\n' in text
+    assert text.count("pythonDirs") == 1
+
+
+def test_python_dirs_stay_out_of_a_stub_without_python_code() -> None:
+    """The stub of an entry with no `python=` keeps its text."""
+    text, _ = text_of('Input("a", "github:o/a")', {"a": set()})
+    assert "pythonDirs" not in text
+    with_python, _ = text_of('Input("a", "github:o/a", python=".")', {"a": set()})
+    assert with_python.replace('        pythonDirs = { a = "."; };\n', "") == text
+
+
 def test_nixpkgs_pins_and_choices() -> None:
     """009-D53: `NixpkgsPin(...)` becomes the input `nixpkgs-NAME`; `nixpkgs=` picks it; `OWN` adds no follows."""
     commit = "d" * 40

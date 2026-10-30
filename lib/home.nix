@@ -89,7 +89,7 @@ let
   # passes. The `nixpkgs-NAME` inputs are the pins of `NixpkgsPin("NAME", commit)`. They have no options, so they get no
   # classes. They get the package list `pynix_nixpkgs_NAME` instead, so `NAME.pkgs.PACKAGE` finds its packages
   # (009-D53, 009-D54).
-  inputPackages = { extraInputs, modules ? { }, system ? defaultSystem }:
+  inputPackages = { extraInputs, modules ? { }, pythonDirs ? { }, system ? defaultSystem }:
     let
       pins = nlib.mapAttrs' (n: v: nlib.nameValuePair (nlib.removePrefix "nixpkgs-" n) v)
         (nlib.filterAttrs (n: _: nlib.hasPrefix "nixpkgs-" n) extraInputs);
@@ -105,7 +105,9 @@ let
       specialArgs.inputs = { nixpkgs = inputs.nixpkgs; minix = self; } // extraInputs;
     }
     # Only an entry with a `NixpkgsPin(...)` passes the argument, so a pynix that predates it still serves the other entries.
-    // nlib.optionalAttrs (pins != { }) { nixpkgsInputs = pins; });
+    // nlib.optionalAttrs (pins != { }) { nixpkgsInputs = pins; }
+    # Likewise `pythonDirs`: only an entry with `Input(python=...)` passes it (the folders of Python code, by input name).
+    // nlib.optionalAttrs (pythonDirs != { }) { inherit pythonDirs; });
 
   home =
     { compiled        # a path: the file `home.json` that `minix_config.compile` writes
