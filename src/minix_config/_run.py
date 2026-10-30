@@ -6,7 +6,7 @@ import re
 import shlex
 from typing import TYPE_CHECKING, Annotated
 
-from nixdantic import Expect, Native, Plain, Text
+from nixdantic import ExeOf, Expect, Native, Plain, Text
 from pydantic import ConfigDict
 from pynix_pkgs._pkgref import Exe, PackageError, Pkg, Prog
 
@@ -92,9 +92,16 @@ class Run(Plain):
         return cls.model_validate({"program": program, "file": file, "args": list(args)})
 
     def _head(self) -> list:
-        if not self.file and isinstance(self.program, Pkg):
+        """The start of the command: the program, or `/bin/FILE` of the package.
+
+        A package of `pkgs` with no `file` keeps the older `Exe`. Any other package (of an input, of a pinned nixpkgs,
+        or a `Native`) uses `ExeOf`, so Nix runs the main program of that package and not the `pkgs` package of the same name.
+        """
+        if self.file:
+            return [self.program, f"/bin/{self.file}"]
+        if isinstance(self.program, Pkg) and self.program.kind == "package":
             return [Exe(attr=self.program.attr)]
-        return [self.program, f"/bin/{self.file}"]
+        return [ExeOf(self.program)]
 
     def systemd(self) -> Text:
         """The `ExecStart` text: systemd quoting, no shell."""

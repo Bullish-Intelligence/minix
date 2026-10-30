@@ -19,6 +19,8 @@ The checks (the reference drvPaths come from the spikes SG35 and SG42c):
 - `unit_hatch`: a second piece with the same unit name adds keys to the unit of a `Service` (I7). `X-SwitchMethod` joins
   the `[Unit]` section, and `ExecStart` and `Description` stay. A second `Unit_Description` is a conflict.
 - `native_program`: `Service(program=Native(...), file=...)` runs the package that a Nix file of the workspace gives.
+- `input_program`: the package of an input is the `program` of a `Service`, with no `file=`. `ExecStart=` holds the store
+  path of the package of the input and its main program, not the `pkgs` package of the same name.
 - `session`: a login shell loads `hm-session-vars.sh`, so `EDITOR` is set after a login.
 - `desktop`: a home with `Hyprland`, `Noctalia`, `Foot`, and one `Theme` builds, holds the three config files and no
   Hyprland or Noctalia package, and gives the drvPath of a hand-written Home Manager module. A learner option beats
@@ -651,6 +653,41 @@ def check_native_program(tools: Tools) -> None:
     )
 
 
+NIX_DEMO_HOME = """from minix_config import *
+from pynix_nix_demo.pkgs import nix_demo_pkgs
+
+home = Home(
+    user="learner",
+    services=[Service("d", program=nix_demo_pkgs.daemon, args="--a")],
+    inputs=[Input("nix-demo", "path:{url}")],
+)
+"""
+
+
+def check_input_program(tools: Tools) -> None:
+    """The package of an input is the `program` of a `Service`, with no `file=`: `ExecStart=` runs the main program of
+    that package, not the package of `pkgs` with the same name."""
+    demo = WORK / "inputs" / "nix-demo"
+    shutil.rmtree(demo, ignore_errors=True)
+    shutil.copytree(ROOT / "tests/fixtures/inputs/nix-demo", demo)
+    ws = tools.workspace("input-program", NIX_DEMO_HOME.format(url=demo), lock=False)
+    nix("flake", "lock", cwd=ws)
+    (ws / ".basix").mkdir()
+    nix("build", "--out-link", ".basix/pynix", f"path:{ws}#packages.{SYSTEM}.input-packages", cwd=ws)
+    tools.compile(ws)
+    out = nix(
+        "build", "--no-link", "--print-out-paths", f"path:{ws}#homeConfigurations.learner.activationPackage", cwd=ws
+    )
+    unit = (Path(out.split()[-1]) / "home-files" / ".config" / "systemd" / "user" / "d.service").read_text()
+    say(unit.rstrip())
+    line = next((x for x in unit.splitlines() if x.startswith("ExecStart=")), "")
+    expect(
+        "input_program: ExecStart= runs the main program of the package of the input",
+        re.fullmatch(r"ExecStart=/nix/store/[a-z0-9]{32}-daemon-input/bin/daemon-input-bin --a", line) is not None,
+        line,
+    )
+
+
 DESKTOP_HOME = """from minix_config import *
 
 theme = Theme(accent="ff8800", colours=Colours(background="1e1e2e", foreground="cdd6f4"), font="monospace", font_size=12)
@@ -1056,6 +1093,7 @@ def main() -> int:
         check_advanced,
         check_unit_hatch,
         check_native_program,
+        check_input_program,
         check_desktop,
         check_session,
         check_zellij,

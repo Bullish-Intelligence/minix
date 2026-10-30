@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from nixdantic import supplied
+from nixdantic import ExeOf, supplied
 from pydantic import ValidationError
+from pynix_native import InputProg, NixpkgsProg
 
 from minix_config import Bind, Native, Service, Step, pkgs
 from minix_config import _base as base
@@ -374,3 +375,45 @@ def test_a_router_service_writes_the_whole_unit() -> None:
         },
         "Install": {"WantedBy": ["default.target"]},
     }
+
+
+# --- the package of an input or of a pin keeps its identity (no file=) ----------------------------------
+def exe_of(package: dict[str, str]) -> dict[str, Any]:
+    return {"__nixdantic_ref__": {"kind": "exe_of", "of": package}}
+
+
+INPUT = InputProg("nix-demo", "daemon")
+INPUT_WIRE = {"kind": "input_package", "attr": "daemon", "input": "nix-demo"}
+PIN = NixpkgsProg("old", "daemon")
+PIN_WIRE = {"kind": "nixpkgs_package", "attr": "daemon", "nixpkgs": "old"}
+
+
+@pytest.mark.parametrize(("program", "package"), [(INPUT, INPUT_WIRE), (PIN, PIN_WIRE)])
+def test_a_service_runs_the_package_of_an_input_or_a_pin(program: Any, package: dict[str, str]) -> None:
+    web = wire(Service("web", program=program, args="-q"))
+    assert parts(web["Service"]["ExecStart"]) == [exe_of(package), " -q"]
+
+
+@pytest.mark.parametrize(("program", "package"), [(INPUT, INPUT_WIRE), (PIN, PIN_WIRE)])
+def test_a_step_runs_the_package_of_an_input_or_a_pin(program: Any, package: dict[str, str]) -> None:
+    assert list(Step(program=program).command_text().parts) == [ExeOf(program)]
+    web = wire(make(pre_start=[Step(program=program, args="-q")]))
+    assert parts(web["Service"]["ExecStartPre"][0]) == [exe_of(package), " -q"]
+
+
+@pytest.mark.parametrize(("program", "package"), [(INPUT, INPUT_WIRE), (PIN, PIN_WIRE)])
+def test_a_bind_runs_the_package_of_an_input_or_a_pin(program: Any, package: dict[str, str]) -> None:
+    text = supplied(Bind("SUPER", "T", program=program, args="-q").command_text())
+    assert text["__nixdantic_ref__"]["parts"][0] == exe_of(package)
+
+
+def test_a_file_names_the_package_of_an_input_or_a_pin_with_a_path() -> None:
+    web = wire(Service("web", program=INPUT, file="daemon-bin"))
+    assert parts(web["Service"]["ExecStart"]) == [{"__nixdantic_ref__": INPUT_WIRE}, "/bin/daemon-bin"]
+
+
+def test_a_plain_package_keeps_the_exe_wire() -> None:
+    exe = {"__nixdantic_ref__": {"kind": "exe", "attr": "curl"}}
+    assert parts(wire(Service("web", program=pkgs.curl))["Service"]["ExecStart"]) == [exe]
+    assert parts(wire(make(pre_start=[Step(program=pkgs.curl)]))["Service"]["ExecStartPre"][0]) == [exe]
+    assert supplied(Bind("SUPER", "T", program=pkgs.curl).command_text())["__nixdantic_ref__"]["parts"] == [exe]
