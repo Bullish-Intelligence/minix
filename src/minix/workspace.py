@@ -1,5 +1,6 @@
 """The workspace of minix: where it is, what the host is, and the facts that minix reads from the host."""
 
+import json
 import platform
 import re
 from collections.abc import Mapping
@@ -115,6 +116,33 @@ def warn_no_linger(session: Session, user: str) -> None:
     """009-D30, BSX-393: say once per run that user services stop at logout when the account does not linger."""
     if lingering(session, user) is False:
         session.say(session.layer.text("no_linger", user=user))
+
+
+def login_shell(session: Session, user: str) -> str | None:
+    """The login shell of the account. None when the host cannot tell."""
+    result = session.run(["getent", "passwd", user], quiet=True)
+    fields = result.out.strip().split(":")
+    if result.code != 0 or len(fields) < 7 or not fields[6]:
+        return None
+    return fields[6]
+
+
+def holds_zsh(session: Session) -> bool:
+    """Whether the compiled home sets `programs.zsh`: `Zsh()` does."""
+    try:
+        compiled = json.loads((session.ws / session.layer.json_file).read_text())
+        return any(item["path"][:2] == ["programs", "zsh"] for item in compiled["fragments"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def warn_zsh_login_shell(session: Session, user: str) -> None:
+    """Say once per run that the home sets up zsh while the login shell is another shell. Only the system sets it."""
+    if not holds_zsh(session):
+        return
+    shell = login_shell(session, user)
+    if shell is not None and Path(shell).name != "zsh":
+        session.say(session.layer.text("zsh_login_shell", user=user, shell=shell))
 
 
 def environment_home(env: Mapping[str, str]) -> Path:

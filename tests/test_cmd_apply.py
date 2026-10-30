@@ -395,6 +395,46 @@ def test_apply_says_nothing_about_lingering_when_it_is_on(setup: Setup) -> None:
     assert not [line for line in setup.lines if "lingering" in line]
 
 
+# --- the login shell --------------------------------------------------------------------------------
+ZSH_FRAGMENT: dict[str, object] = {"version": 1, "source": "home.py:3 (Zsh)", "path": ["programs", "zsh"], "value": {}}
+ZSH_LINE = (
+    "warning: home.py has Zsh(), and the login shell of ada is /bin/bash. "
+    "The system sets the login shell: on Basix, in system.py. The home still applies."
+)
+
+
+def shell_lines(setup: Setup) -> list[str]:
+    return [line for line in setup.lines if "login shell" in line]
+
+
+def test_apply_warns_once_when_the_home_has_zsh_and_the_login_shell_is_bash(setup: Setup) -> None:
+    setup.world.compiled_fragments = [ZSH_FRAGMENT]
+    assert apply(setup) == 0
+    assert shell_lines(setup) == [ZSH_LINE]
+    assert ("getent", "passwd", "ada") in setup.fake.calls
+    assert "applied: the home runs, and its units are healthy" in setup.lines
+
+
+def test_apply_says_nothing_about_the_login_shell_when_it_is_zsh(setup: Setup) -> None:
+    setup.world.compiled_fragments = [ZSH_FRAGMENT]
+    setup.world.login_shell = "/run/current-system/sw/bin/zsh"
+    assert apply(setup) == 0
+    assert not shell_lines(setup)
+
+
+def test_apply_says_nothing_about_the_login_shell_when_getent_fails(setup: Setup) -> None:
+    setup.world.compiled_fragments = [ZSH_FRAGMENT]
+    setup.world.getent_code = 2
+    assert apply(setup) == 0, setup.lines
+    assert not shell_lines(setup)
+
+
+def test_apply_says_nothing_about_the_login_shell_when_the_home_has_no_zsh(setup: Setup) -> None:
+    assert apply(setup) == 0
+    assert not shell_lines(setup)
+    assert not [call for call in setup.fake.calls if call[0] == "getent"]
+
+
 # --- the stub, the lock, and the input packages -----------------------------------------------------
 INPUT_HOME = 'inputs = [Input("nirinit", "github:amaanq/nirinit/REV", modules=["nirinit"])]\n'
 

@@ -16,6 +16,9 @@ At run time, a home may use a thing of a Basix host only when it skips or falls 
 - **Linger.** The Basix core turns linger on for the account. With linger, user services and user timers run with
   no login. Without it, they run only while the person is logged in. When linger is off, `minix apply` prints a
   warning and names `loginctl enable-linger USER`. It still applies the home.
+- **Login shell.** `Zsh()` sets up zsh and its completion in the home. The system sets the login shell, not
+  minix. `minix apply` prints a warning when the login shell is not zsh. A Basix host also runs a system
+  `compinit`, unless `enableGlobalCompInit` is off in `system.py`.
 - **Defaults in `/etc/xdg`.** The Basix desktop profile puts a default Hyprland file and a default Noctalia file
   there. A file in your home wins. `Hyprland` loads `/etc/xdg/hypr/hyprland.lua` when it exists, then your settings.
   Without it, `Hyprland` loads the base look of minix. `Noctalia` writes only the settings that you set.

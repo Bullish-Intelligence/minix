@@ -1,4 +1,4 @@
-"""The curated items of a home: programs, files, and the capabilities `Git`, `Neovim`, `Files`, and `TerminalWorkspace`.
+"""The curated items of a home: programs, files, and the capabilities `Git`, `Neovim`, `Files`, `TerminalWorkspace`, and `Zsh`.
 
 Each item is a frozen, strict Pydantic model. The identity of an item is positional, its settings are keywords. A
 capability emits values of the generated Home Manager classes (`pynix_hm`) and nothing else (L04, 009-D18).
@@ -22,11 +22,12 @@ from pynix_hm.programs.neovim import Neovim as HmNeovim
 from pynix_hm.programs.ripgrep import Ripgrep as HmRipgrep
 from pynix_hm.programs.yazi import Yazi as HmYazi
 from pynix_hm.programs.zellij import Zellij as HmZellij
+from pynix_hm.programs.zsh import Zsh as HmZsh
 from pynix_pkgs import Pkg
 
 from ._base import Component
 
-__all__ = ["File", "Files", "Git", "Neovim", "Program", "TerminalWorkspace"]
+__all__ = ["File", "Files", "Git", "Neovim", "Program", "TerminalWorkspace", "Zsh"]
 
 
 def _relative_path(value: str) -> str:
@@ -235,12 +236,42 @@ class TerminalWorkspace(Component):
             ...
 
     def emit(self) -> Iterator[Model]:
-        # zellij does not start by itself: the login stays a plain shell. No component sets `settings`, so Home Manager
+        # zellij does not start by itself: the login stays a plain shell. Home Manager turns the zsh hook on by default,
+        # and `Zsh()` turns zsh on, so the zsh hook is off too. The fish hook stays at its default: an explicit false would
+        # drop two session variables and move the build of every home. No component sets `settings`, so Home Manager
         # writes no settings file and the folders `~/.config/zellij`, `htop`, and `bat` stay the learner's.
         # The Zellij package comes from pyllij (the input `pyllij` of the flake of minix), through the option
         # `minix.zellijPackage` of `lib/home.nix`. A Zellij move is a pyllij change, then a bump of that input.
-        yield HmZellij(enable=True, enableBashIntegration=False, package=ConfigRef(["minix", "zellijPackage"]))
+        yield HmZellij(
+            enable=True,
+            enableBashIntegration=False,
+            enableZshIntegration=False,
+            package=ConfigRef(["minix", "zellijPackage"]),
+        )
         yield HmRipgrep(enable=True)
         yield HmFd(enable=True)
         yield HmBat(enable=True)
         yield HmHtop(enable=True)
+
+
+# One cached `compinit`, run by Home Manager after it adds the folders of the home to `fpath`. The dump file sits in the
+# cache folder and carries the zsh version. `compinit` rebuilds the dump when the set of completion files changes.
+_ZSH_COMPLETION = """autoload -U compinit
+dump="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+mkdir -p "$dump"
+compinit -d "$dump/zcompdump-$ZSH_VERSION"
+unset dump
+"""
+
+
+class Zsh(Component):
+    """Set up zsh and its completion. The system sets your login shell, not minix. Move an old ~/.zshrc away first."""
+
+    if TYPE_CHECKING:
+
+        def __init__(self) -> None:
+            """Set up zsh and its completion. The system sets your login shell, not minix. Move an old ~/.zshrc away first."""
+            ...
+
+    def emit(self) -> Iterator[Model]:
+        yield HmZsh(enable=True, enableCompletion=True, completionInit=_ZSH_COMPLETION)

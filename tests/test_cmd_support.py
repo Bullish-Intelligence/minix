@@ -112,6 +112,9 @@ class World:
     user: str = "ada"
     units: str = GOOD_UNITS
     linger: str = "yes"
+    login_shell: str = "/bin/bash"  # the seventh field of `getent passwd`
+    getent_code: int = 0
+    compiled_fragments: list[dict[str, object]] = field(default_factory=list)  # what the compiler writes
     compile_error: str | None = None
     compiled_user: str | None = None  # the user that the compiler writes; None: the account
     build_error: str | None = None
@@ -261,7 +264,9 @@ def install_handlers(fake: FakeRunner, world: World) -> None:
     def compile_home(argv):
         if world.compile_error:
             return Result(1, world.compile_error + "\n")
-        Path(argv[2]).write_text(json.dumps({"user": world.compiled_user or world.user, "fragments": []}))
+        Path(argv[2]).write_text(
+            json.dumps({"user": world.compiled_user or world.user, "fragments": world.compiled_fragments})
+        )
         return Result(0, "")
 
     def activation(argv):
@@ -324,6 +329,14 @@ def install_handlers(fake: FakeRunner, world: World) -> None:
     fake.add(lambda argv: activation(argv) if argv[0].endswith("/activate") else None)
     fake.on(HEALTH_COMMAND, lambda argv: Result(world.health_code, world.units))
     fake.on(("loginctl",), lambda argv: Result(0, world.linger + "\n"))
+    fake.on(
+        ("getent",),
+        lambda argv: (
+            Result(world.getent_code, f"{world.user}:x:1000:100::/home/{world.user}:{world.login_shell}\n")
+            if world.getent_code == 0
+            else Result(world.getent_code, "")
+        ),
+    )
     fake.on(RESET_FAILED, Result(0))
 
 

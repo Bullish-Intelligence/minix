@@ -60,6 +60,7 @@ def test_learner_names_are_the_documented_set() -> None:
             "Text",
             "Theme",
             "Timer",
+            "Zsh",
             "hm",
             "pkgs",
         ]
@@ -219,10 +220,11 @@ def test_terminal_workspace_component() -> None:
         "programs.bat",
         "programs.htop",
     ]
-    # No auto-start. The package is the option `minix.zellijPackage`, which `lib/home.nix` fills from the input pyllij.
+    # No auto-start in bash or zsh. The package is the option `minix.zellijPackage`, which `lib/home.nix` fills from the input pyllij.
     assert fragments[0]["value"] == {
         "enable": True,
         "enableBashIntegration": False,
+        "enableZshIntegration": False,
         "package": {"__nixdantic_ref__": {"kind": "config", "path": ["minix", "zellijPackage"]}},
     }
     assert all("settings" not in f["value"] for f in fragments)  # no settings file

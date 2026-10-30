@@ -16,7 +16,7 @@ from pynix_native import DiscoveryError, Found, discover
 
 from minix.layer import stopped
 from minix.release import locked_node, read_lock
-from minix.workspace import stub_url
+from minix.workspace import stub_url, warn_zsh_login_shell
 from minix_config.stub import DEFAULT_MINIX_URL, write_stub
 
 # The flake output that builds the input packages (`pynix_NAME`) of the workspace, proposed with `p5-lib`.
@@ -125,6 +125,7 @@ class Compiler:
         previous = json_file.read_bytes() if json_file.exists() else None
         steps.run_compiler(session, tool)
         check_account(session, self.user, previous)
+        warn_zsh_login_shell(session, self.user)
         root_inputs(session)
 
     def write_stub(self, session: Session, found: Found) -> None:

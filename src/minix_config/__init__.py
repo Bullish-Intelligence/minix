@@ -18,7 +18,7 @@ from pynix_native import OWN, Input, NativeModule, NixpkgsPin, input_json, regis
 from pynix_pkgs import pkgs
 
 from ._base import _learner_site
-from ._components import File, Files, Git, Neovim, Program, TerminalWorkspace
+from ._components import File, Files, Git, Neovim, Program, TerminalWorkspace, Zsh
 from ._desktop import Colours, Foot, Hyprland, Noctalia, Theme
 from ._service import Bind, Service, Step, Timer
 
@@ -48,6 +48,7 @@ __all__ = [
     "Text",
     "Theme",
     "Timer",
+    "Zsh",
     "hm",
     "pkgs",
 ]
@@ -108,9 +109,9 @@ StateVersion = Annotated[
     AfterValidator(_release),
 ]
 Tool = Annotated[
-    Git | Neovim | Files | TerminalWorkspace | Hyprland | Noctalia | Foot | Program,
+    Git | Neovim | Files | TerminalWorkspace | Zsh | Hyprland | Noctalia | Foot | Program,
     Expect(
-        "a program: Git(...), Neovim(...), Files(), TerminalWorkspace(), Hyprland(...), Noctalia(...), Foot(...), "
+        "a program: Git(...), Neovim(...), Files(), TerminalWorkspace(), Zsh(), Hyprland(...), Noctalia(...), Foot(...), "
         "or Program(pkgs.NAME)"
     ),
 ]

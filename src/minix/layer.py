@@ -54,6 +54,10 @@ class MinixWords(Words):
         "warning: lingering is off for {user}, so your user services stop when you log out. "
         "To keep them running, ask an administrator to run: loginctl enable-linger {user}"
     )
+    zsh_login_shell: str = (
+        "warning: {entry} has Zsh(), and the login shell of {user} is {shell}. "
+        "The system sets the login shell: on Basix, in system.py. The home still applies."
+    )
     scratch_ignored: str = "added {names} to .gitignore"
     inputs_failed: str = "warning: the flake inputs could not be rooted: {detail}"
     inputs_build_failed: str = "The input packages could not be built. Nothing was built, switched, or saved.\n{detail}"
