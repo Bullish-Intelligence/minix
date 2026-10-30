@@ -30,7 +30,7 @@ from pynix_engine import (
 from pynix_native import DiscoveryError, discover, discover_source
 
 from minix.compile import Compiler, ensure_ignored, make_input_packages
-from minix.layer import FALLBACK_IDENTITY, minix_layer
+from minix.layer import ACTIVE_SYSTEM, FALLBACK_IDENTITY, minix_layer, pin_lines
 from minix.nix import NixRunner
 from minix.release import (
     changelog_sections,
@@ -67,6 +67,7 @@ class Context:
     clock: Clock = field(default_factory=SystemClock)
     say: Callable[[str], None] = say_flush
     system: str | None = None  # None: the system of the host
+    active_system: Path = ACTIVE_SYSTEM  # the activated system, where Basix publishes its Python input pins (021-D3)
     share: Path | None = None  # the folder `share/minix` of the package (`MINIX_SHARE`): the seed of the lock
     read_inputs: Callable[..., frozenset[str] | None] = input_names  # the names in `inputs` of a flake input
     wall_time: Callable[[], float] = time.time  # for the age of a nixpkgs
@@ -103,6 +104,7 @@ def workspace_layer(ctx: Context, ws: Path) -> Layer:
         folder=tilde(ws, ctx.home),
         compile=Compiler(user, ctx.system or host_system(), ctx.read_inputs),
         preflight=preflight,
+        system=ctx.active_system,
     )
 
 
@@ -227,6 +229,18 @@ def print_changelog(
         ctx.say(f"{old_tag or 'unknown'} -> {new_tag or 'unknown'}: no change to an option that home.py sets")
 
 
+def say_pin_warnings(ctx: Context, ws: Path, layer: Layer) -> None:
+    """After the lock moved: warn when a Python input has another revision in the activated Basix system (021-D3).
+
+    The warning never changes the exit code of `update`.
+    """
+    try:
+        for line in pin_lines(ws, layer.json_file, ctx.active_system):
+            ctx.say(line)
+    except Exception:  # noqa: BLE001 - a warning never stops the update
+        pass
+
+
 def update(ctx: Context, name: str = "minix", directory: Path | None = None, verbose: bool = False) -> int:
     """Move the lock of `minix` (or of the input `name`), print what changed, and make the input packages.
 
@@ -266,6 +280,7 @@ def update(ctx: Context, name: str = "minix", directory: Path | None = None, ver
         print_changelog(
             ctx, session, lock_before, lock_after, (pynix_before, input_source(tree_after, "minix", "pynix"))
         )
+        say_pin_warnings(ctx, ws, layer)
         try:
             make_input_packages(session, discover(ws / "home.py"))
         except DiscoveryError:

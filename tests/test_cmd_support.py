@@ -115,6 +115,7 @@ class World:
     login_shell: str = "/bin/bash"  # the seventh field of `getent passwd`
     getent_code: int = 0
     compiled_fragments: list[dict[str, object]] = field(default_factory=list)  # what the compiler writes
+    compiled_inputs: list[dict[str, object]] = field(default_factory=list)  # the `inputs` that the compiler writes
     compile_error: str | None = None
     compiled_user: str | None = None  # the user that the compiler writes; None: the account
     build_error: str | None = None
@@ -265,7 +266,13 @@ def install_handlers(fake: FakeRunner, world: World) -> None:
         if world.compile_error:
             return Result(1, world.compile_error + "\n")
         Path(argv[2]).write_text(
-            json.dumps({"user": world.compiled_user or world.user, "fragments": world.compiled_fragments})
+            json.dumps(
+                {
+                    "user": world.compiled_user or world.user,
+                    "fragments": world.compiled_fragments,
+                    **({"inputs": world.compiled_inputs} if world.compiled_inputs else {}),
+                }
+            )
         )
         return Result(0, "")
 
@@ -362,6 +369,8 @@ def make_setup(tmp_path: Path, **world_options: object) -> Setup:
         clock=clock,
         say=lines.append,
         system="x86_64-linux",
+        active_system=tmp_path
+        / "run-current-system",  # a scratch folder: a test never reads the Basix pins of the host
         share=share,
         read_inputs=lambda url, locked=None: world.input_names,
     )

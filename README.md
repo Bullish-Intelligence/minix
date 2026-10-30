@@ -149,6 +149,25 @@ Write a package for both layers (minix and Basix) in two parts. Keep the shared 
 The code exists after the first `minix apply` or `minix update` that sees the `Input`. Before that run, your editor
 cannot find the import.
 
+### The two layers pin one input at different revisions
+
+A Basix machine and a minix home can both pin the same input with `python=`. The pins can sit at different revisions. Then
+`minix apply`, `minix undo`, and `minix update` print one line for each such input:
+
+```text
+warning: the input `comps` is at 1a2b3c4 in your home, but the system has 5d6e7f8. The Python code of the two pins can differ. To make them the same, update the side that is behind.
+```
+
+The line is a warning only. The command goes on and its exit code does not change. Two pins name the same input when the
+repository is the same. The input name can differ.
+
+To make the pins the same, run `minix update NAME` for the home, or `basix update NAME` for the system, on the side that is
+behind. Then apply on that side. You can also leave the pins as they are when the two parts of the code do not share data.
+
+minix reads the file `/run/current-system/etc/basix/python-pins.json` of the system that runs now. It never reads a Basix
+workspace. It prints nothing when the file is missing or damaged (a host that does not run Basix, or a Basix that did not
+apply since it learned to publish the file).
+
 ## Develop
 
 ```bash

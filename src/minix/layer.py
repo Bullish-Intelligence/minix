@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pynix_engine import EXIT_STOPPED, Command, Fail, Layer, Plan, Session, Words
+from pynix_native import pins
 
 from minix import desktop
 
@@ -25,6 +26,11 @@ RESET_FAILED: Command = ("systemctl", "--user", "reset-failed")
 
 # Commit identity when git knows no author: a first `minix apply` on a new account (S16 proposal 3).
 FALLBACK_IDENTITY = ("minix", "minix@localhost")
+
+# 021-D3: the activated NixOS system. A Basix system publishes its Python input pins at `etc/basix/python-pins.json`.
+# Both are standard paths. Tests pass another folder, so they never read the host.
+ACTIVE_SYSTEM = Path("/run/current-system")
+SYSTEM_PINS = Path("etc/basix/python-pins.json")
 
 DEFAULT_FOLDER = "~/minix"
 # A person who keeps the workspace elsewhere sets this variable to its folder.
@@ -73,6 +79,11 @@ class MinixWords(Words):
         "Hyprland does not accept the config: {detail}. Nothing was switched or saved. The home did not change."
     )
     hyprland_unchecked: str = "warning: Hyprland could not check the config (exit {code}), so minix skipped the check"
+    # The template of `pynix_native.pins` (021-D3). The fields {input}, {here}, {there}, {local_rev}, and {other_rev} stay.
+    pin_mismatch: str = (
+        "warning: the input {input} is at {local_rev} in {here}, but {there} has {other_rev}. "
+        "The Python code of the two pins can differ. To make them the same, update the side that is behind."
+    )
 
 
 WORDS = MinixWords()
@@ -135,6 +146,26 @@ def roll_back_commands(profile: Path, earlier: str | None, built: str) -> list[C
     ]
 
 
+def pin_lines(ws: Path, json_file: str, system: Path = ACTIVE_SYSTEM) -> list[str]:
+    """The warning lines for a Python input that the home and the activated Basix system pin at different revisions.
+
+    The home side is the workspace: `json_file` and `flake.lock`. The system side is the file that the activated system
+    publishes. minix never reads a Basix workspace (021-D7). A missing or damaged file gives no line. Nothing raises.
+    """
+    try:
+        return list(
+            pins.lines(
+                pins.from_workspace(ws, json_file),
+                pins.load(system / SYSTEM_PINS),
+                here="your home",
+                there="the system",
+                text=WORDS.pin_mismatch,
+            )
+        )
+    except Exception:  # noqa: BLE001 - a warning never changes the exit code
+        return []
+
+
 def plan(session: Session, built: str) -> Plan:
     """How minix switches to `built`: the Home Manager activation. It needs no `sudo` (S16)."""
     desktop.check(session, built)  # the missing-program line and the Hyprland check (009-D25, L28)
@@ -162,8 +193,18 @@ def minix_layer(
     folder: str = DEFAULT_FOLDER,
     compile: Callable[[Session], None] | None = None,
     preflight: Callable[[Session], None] | None = None,
+    system: Path = ACTIVE_SYSTEM,
 ) -> Layer:
-    """The layer of the account `user`. `compile` replaces the default compile step of the engine."""
+    """The layer of the account `user`. `compile` replaces the default compile step of the engine.
+
+    `system` is the activated system, where the Basix pins are: a test passes a scratch folder.
+    """
+
+    def pin_check(session: Session, built: str) -> list[str]:
+        # The workspace holds the files that the engine just built (the engine stops when they change), also after
+        # `undo`, which restores them first. So the pins of the workspace are the pins of `built`.
+        return pin_lines(session.ws, session.layer.json_file, system)
+
     return Layer(
         name="minix",
         entry="home.py",
@@ -178,6 +219,7 @@ def minix_layer(
         on_fail_env="MINIX_ON_FAIL",
         compile=compile,
         preflight=preflight,
+        pin_check=pin_check,
         fallback_identity=FALLBACK_IDENTITY,
         words=WORDS,
     )
