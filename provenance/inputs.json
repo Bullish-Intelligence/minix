@@ -15,7 +15,7 @@
     "PASS pair: pynix_hm from another nixpkgs stops the evaluation",
     "PASS pair: the same stub evaluates with the real pynix"
   ],
-  "commit": "1fd7f3faee6d9ae0e38d25d905b5d32a3b705643",
+  "commit": "97673d095a202aa52f0b35bba698bd4fbd560a0d",
   "home-manager": {
     "narHash": "sha256-KuLePuhwJM9NLt/gTLHzXaOoSZKGoB3m7NfXjiQ98HY=",
     "rev": "fae6e9e42c3b762ab47635cddcfaf6f52374a61b"
@@ -25,16 +25,16 @@
     "narHash": "sha256-H83yz/do+hjOO0uujHyH8RgtIQP2v7Mw+cLwcZK/xKc=",
     "rev": "e7439b6b14ad3cc35d05608ebca9bce01a25f5f8"
   },
-  "previous": "v0.4.1",
+  "previous": "v0.4.2",
   "pynix": {
-    "narHash": "sha256-Z+dAn/9Gtuj+cV1AoNwDAld4wuS9oN4/QAf/QHASh4s=",
-    "rev": "7c60a3d3595409ee308b055681dcb9d9498e2f86",
-    "tag": "pynix-v0.5.0"
+    "narHash": "sha256-4pu6QV9faatl6basq2NnHscRlexkLTrmF5xF6Q49CY4=",
+    "rev": "b070f8add6f8a1c0d288408914b84532e74f61de",
+    "tag": "pynix-v0.6.0"
   },
   "pynix_hm": {
     "home-manager": "fae6e9e42c3b762ab47635cddcfaf6f52374a61b",
     "nixpkgs": "e7439b6b14ad3cc35d05608ebca9bce01a25f5f8"
   },
-  "tag": "v0.4.2",
-  "version": "0.4.2"
+  "tag": "v0.5.0",
+  "version": "0.5.0"
 }

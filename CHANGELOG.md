@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.5.0
+
+```text
+minix 0.5.0 (pynix pynix-v0.6.0; nixpkgs e7439b6, 2026-10-08; Home Manager fae6e9e)
+Previous: v0.4.2. Commits since then: 9.
+- Version 0.5.0
+- Document the python field of Input
+- Build the Python code of an input into the input packages
+- Pin pynix-v0.6.0
+- Test that the programs error names every program
+- Name the file of an error in a helper module
+- Refuse an Input that discovery did not read from home.py
+- Clear NIX_PYTHONPATH in the compiler wrapper
+- Check the input packages again at evaluation
+```
+
 ## v0.4.2
 
 ```text
