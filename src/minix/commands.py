@@ -4,7 +4,6 @@ A command gets a `Context`: the runner, the clock, the output, the environment, 
 real one. The tests build one with fakes.
 """
 
-import fcntl
 import getpass
 import json
 import os
@@ -237,15 +236,12 @@ def update(ctx: Context, name: str = "minix", directory: Path | None = None, ver
     try:
         ws = find_workspace(directory, ctx.cwd, ctx.home, ctx.env)
         layer = workspace_layer(ctx, ws)
+        session = Session(layer, ws, ctx.nix, ctx.clock, ctx.say, ctx.env, verbose)
     except Fail as failure:
         ctx.say(str(failure))
         return failure.code
-    session = Session(layer, ws, ctx.nix, ctx.clock, ctx.say, ctx.env, verbose)
-    lock = (session.state / "lock").open("w")  # the lock of `apply`: one command at a time
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        lock.close()
+    lock = session.try_lock()  # the lock of `apply`, shared by all worktrees: one command at a time
+    if lock is None:
         ctx.say(session.word("busy"))
         return EXIT_FAILED
     session.open_log()

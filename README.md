@@ -6,6 +6,10 @@ Home Manager configuration. The `minix` command has four verbs: `init`, `apply`,
 `update`. minix runs on any Linux host with Nix and a systemd user manager, with or without Basix.
 The workspace is `~/minix` by default. If you keep it elsewhere, set `MINIX_WORKSPACE` to its folder. `minix init` makes that folder (and its parents) too.
 
+A workspace can be a git linked worktree, for example a gitman workspace. `apply`, `undo`, and `update` work in it.
+Each worktree keeps its own log and build links in its git folder. All worktrees of one repository share one lock,
+because they change one home. A save commit goes to the HEAD of the worktree that runs the command.
+
 This repository holds only the empty scaffold. The `minix` command prints its help and its version.
 
 ## Run-time contracts with a Basix host
