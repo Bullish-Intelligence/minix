@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.4.0
+
+```text
+minix 0.4.0 (pynix pynix-v0.3.0; nixpkgs e7439b6, 2026-10-08; Home Manager fae6e9e)
+Previous: v0.3.2. Commits since then: 6.
+- Version 0.4.0
+- Add Zsh: the home owns zsh completion
+- Add Timer: a Service can start on a calendar
+- README: list the run-time contracts with a Basix host
+- Add typed unit fields and Step to Service
+- Emit one Home Manager value for each user unit
+```
+
 ## v0.3.2
 
 ```text
