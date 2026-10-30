@@ -80,10 +80,10 @@ joins the two pieces. For example, `User(services={"daemon": User_Services_Value
 ## A package from a Nix file
 
 `program` takes a package of the package list (`pkgs.NAME`) or a `Native` package. A `Native` package comes from a Nix file
-in the workspace. `Service` and `Step` need `file=` with it, because minix cannot see the main program of the package.
+in the workspace. Nix finds the main program of the package from its `meta.mainProgram`, so `file=` is optional.
 
 ```python
-Service("daemon", program=Native("pkg.nix", ["daemon"]), file="daemon")
+Service("daemon", program=Native("pkg.nix", ["daemon"]))
 ```
 
 The file `pkg.nix` gives the package:
@@ -91,6 +91,35 @@ The file `pkg.nix` gives the package:
 ```nix
 { pkgs, ... }: { daemon = pkgs.writeShellScriptBin "daemon" "true"; }
 ```
+
+Give `file=` when the package has no `meta.mainProgram`. Without `meta.mainProgram`, Nix warns and guesses the name of
+the program from the name of the package. `file="NAME"` runs `bin/NAME` of the package and avoids the guess:
+
+```python
+Service("daemon", program=Native("pkg.nix", ["daemon"]), file="daemon")
+```
+
+## A service from a flake input
+
+An `Input` can offer packages. `minix apply` and `minix update` make a Python package for each input. Its name is
+`pynix_` plus the input name, with `_` for `-`. The module `pkgs` of that package holds one object, named after the input
+with `_pkgs` at the end. For the input `nix-demo`, the package is `pynix_nix_demo` and the object is `nix_demo_pkgs`:
+
+```python
+from minix_config import *
+from pynix_nix_demo.pkgs import nix_demo_pkgs
+
+home = Home(
+    user="learner",
+    inputs=[Input("nix-demo", "github:example/nix-demo")],
+    services=[Service("daemon", program=nix_demo_pkgs.daemon)],
+)
+```
+
+The service runs the main program of the package `daemon` of the input `nix-demo`. It never runs a package of the same
+name from `pkgs`. A package of a pinned nixpkgs (`NixpkgsPin`) works the same way. `Step` and `Bind` take the same
+packages. The Python package of an input exists after the first `minix apply` or `minix update` that sees the `Input`.
+Before that run, your editor cannot find the import.
 
 ## Develop
 

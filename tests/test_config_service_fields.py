@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from nixdantic import ExeOf, supplied
 from pydantic import ValidationError
-from pynix_native import InputProg, NixpkgsProg
+from pynix_native import InputPkg, InputProg, NixpkgsProg
 
 from minix_config import Bind, Native, Service, Step, pkgs
 from minix_config import _base as base
@@ -277,15 +277,26 @@ def test_a_step_runs_a_native_package_by_its_file() -> None:
     assert parts(web["Service"]["ExecStartPre"][0]) == [NATIVE, "/bin/d", " -q"]
 
 
+def test_a_service_runs_a_native_package_without_a_file() -> None:
+    """The type checker (`ty`) accepts the call: the overload with no `file` takes a `Native` package."""
+    web = wire(Service("d", program=Native("pkg.nix", ["daemon"]), args="--a"))
+    assert parts(web["Service"]["ExecStart"]) == [exe_of(NATIVE_WIRE), " --a"]
+
+
+def test_a_step_runs_a_native_package_without_a_file() -> None:
+    step = Step(program=Native("pkg.nix", ["daemon"]), args="-q")
+    assert list(step.command_text().parts) == [ExeOf(Native("pkg.nix", ["daemon"])), " -q"]
+    web = wire(make(pre_start=[step]))
+    assert parts(web["Service"]["ExecStartPre"][0]) == [exe_of(NATIVE_WIRE), " -q"]
+
+
 @pytest.mark.parametrize("make_one", [Service, Step])
-def test_a_native_package_without_a_file_gives_one_plain_line(make_one: Any) -> None:
+def test_a_package_of_an_input_with_no_main_program_still_needs_a_file(make_one: Any) -> None:
     name = ["d"] if make_one is Service else []
     with pytest.raises(ValidationError) as caught:
-        make_one(*name, program=Native("pkg.nix", ["daemon"]))
+        make_one(*name, program=InputPkg("nix-demo", "lib"))
     assert caught.value.error_count() == 1
-    assert 'must name the file: file="NAME". The Native package from `pkg.nix` has no known main program' in str(
-        caught.value
-    )
+    assert 'and `lib` has none. Name the file: file="NAME"' in str(caught.value)
 
 
 @pytest.mark.parametrize("make_one", [Service, Step])
@@ -378,12 +389,13 @@ def test_a_router_service_writes_the_whole_unit() -> None:
 
 
 # --- the package of an input or of a pin keeps its identity (no file=) ----------------------------------
-def exe_of(package: dict[str, str]) -> dict[str, Any]:
+def exe_of(package: dict[str, Any]) -> dict[str, Any]:
     return {"__nixdantic_ref__": {"kind": "exe_of", "of": package}}
 
 
 INPUT = InputProg("nix-demo", "daemon")
 INPUT_WIRE = {"kind": "input_package", "attr": "daemon", "input": "nix-demo"}
+NATIVE_WIRE = {"kind": "native", "file": "pkg.nix", "attr": ["daemon"]}
 PIN = NixpkgsProg("old", "daemon")
 PIN_WIRE = {"kind": "nixpkgs_package", "attr": "daemon", "nixpkgs": "old"}
 
@@ -401,10 +413,14 @@ def test_a_step_runs_the_package_of_an_input_or_a_pin(program: Any, package: dic
     assert parts(web["Service"]["ExecStartPre"][0]) == [exe_of(package), " -q"]
 
 
+def bind_parts(bind: Bind) -> list[Any]:
+    text: Any = supplied(bind.command_text())
+    return text["__nixdantic_ref__"]["parts"]
+
+
 @pytest.mark.parametrize(("program", "package"), [(INPUT, INPUT_WIRE), (PIN, PIN_WIRE)])
 def test_a_bind_runs_the_package_of_an_input_or_a_pin(program: Any, package: dict[str, str]) -> None:
-    text = supplied(Bind("SUPER", "T", program=program, args="-q").command_text())
-    assert text["__nixdantic_ref__"]["parts"][0] == exe_of(package)
+    assert bind_parts(Bind("SUPER", "T", program=program, args="-q"))[0] == exe_of(package)
 
 
 def test_a_file_names_the_package_of_an_input_or_a_pin_with_a_path() -> None:
@@ -416,4 +432,4 @@ def test_a_plain_package_keeps_the_exe_wire() -> None:
     exe = {"__nixdantic_ref__": {"kind": "exe", "attr": "curl"}}
     assert parts(wire(Service("web", program=pkgs.curl))["Service"]["ExecStart"]) == [exe]
     assert parts(wire(make(pre_start=[Step(program=pkgs.curl)]))["Service"]["ExecStartPre"][0]) == [exe]
-    assert supplied(Bind("SUPER", "T", program=pkgs.curl).command_text())["__nixdantic_ref__"]["parts"] == [exe]
+    assert bind_parts(Bind("SUPER", "T", program=pkgs.curl)) == [exe]

@@ -419,13 +419,19 @@ def test_a_wrapper_in_a_wrapper_is_one_line(tmp_path: Path, capsys: pytest.Captu
     )
 
 
+def test_a_native_service_with_no_file_compiles_to_exe_of(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    text = IMPORT + 'home = Home(user="a", services=[Service("w", program=Native("pkg.nix", ["d"]), args="-q")])\n'
+    code, err, data = run(tmp_path, text, capsys)
+    assert (code, err) == (0, "")
+    assert data is not None
+    start = data["fragments"][0]["value"]["services"]["w"]["Service"]["ExecStart"]["__nixdantic_ref__"]
+    native = {"kind": "native", "file": "pkg.nix", "attr": ["d"]}
+    assert start["parts"] == [{"__nixdantic_ref__": {"kind": "exe_of", "of": native}}, " -q"]
+
+
 @pytest.mark.parametrize(
     ("text", "line"),
     [
-        (
-            'home = Home(user="a", services=[Service("w", program=Native("pkg.nix", ["d"]))])\n',
-            'home.py:2:54: Service.program must name the file: file="NAME". The Native package from `pkg.nix` has no known main program.',
-        ),
         (
             'home = Home(user="a", services=[Service("w", program="curl", file="x")])\n',
             'home.py:2:54: Service.program must be a package such as pkgs.NAME, or a Native package such as Native("pkg.nix", ["attr"]), found "curl".',

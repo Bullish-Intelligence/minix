@@ -21,6 +21,8 @@ The checks (the reference drvPaths come from the spikes SG35 and SG42c):
 - `native_program`: `Service(program=Native(...), file=...)` runs the package that a Nix file of the workspace gives.
 - `input_program`: the package of an input is the `program` of a `Service`, with no `file=`. `ExecStart=` holds the store
   path of the package of the input and its main program, not the `pkgs` package of the same name.
+- `native_main`: a `Native` package as the `program` of a `Service`, with no `file=`. `ExecStart=` holds the store path
+  of the package and its `meta.mainProgram`.
 - `session`: a login shell loads `hm-session-vars.sh`, so `EDITOR` is set after a login.
 - `desktop`: a home with `Hyprland`, `Noctalia`, `Foot`, and one `Theme` builds, holds the three config files and no
   Hyprland or Noctalia package, and gives the drvPath of a hand-written Home Manager module. A learner option beats
@@ -688,6 +690,37 @@ def check_input_program(tools: Tools) -> None:
     )
 
 
+NATIVE_MAIN_HOME = """from minix_config import *
+
+home = Home(user="learner", services=[Service("d", program=Native("pkg.nix", ["daemon"]), args="--a")])
+"""
+NATIVE_MAIN_PKG = """{ pkgs, ... }:
+{
+  daemon = pkgs.runCommand "daemon-pkg" { meta.mainProgram = "daemon-main"; } ''
+    mkdir -p $out/bin
+    printf '#!/bin/sh\ntrue\n' > $out/bin/daemon-main
+    chmod +x $out/bin/daemon-main
+  '';
+}
+"""
+
+
+def check_native_main(tools: Tools) -> None:
+    """A `Native` package with no `file=`: `ExecStart=` holds the store path of the package and its `meta.mainProgram`."""
+    ws = tools.workspace("native-main", NATIVE_MAIN_HOME, files={"pkg.nix": NATIVE_MAIN_PKG})
+    out = nix(
+        "build", "--no-link", "--print-out-paths", f"path:{ws}#homeConfigurations.learner.activationPackage", cwd=ws
+    )
+    unit = (Path(out.split()[-1]) / "home-files" / ".config" / "systemd" / "user" / "d.service").read_text()
+    say(unit.rstrip())
+    line = next((x for x in unit.splitlines() if x.startswith("ExecStart=")), "")
+    expect(
+        "native_main: ExecStart= holds the store path of the package and its main program",
+        re.fullmatch(r"ExecStart=/nix/store/[a-z0-9]{32}-daemon-pkg/bin/daemon-main --a", line) is not None,
+        line,
+    )
+
+
 DESKTOP_HOME = """from minix_config import *
 
 theme = Theme(accent="ff8800", colours=Colours(background="1e1e2e", foreground="cdd6f4"), font="monospace", font_size=12)
@@ -1094,6 +1127,7 @@ def main() -> int:
         check_unit_hatch,
         check_native_program,
         check_input_program,
+        check_native_main,
         check_desktop,
         check_session,
         check_zellij,

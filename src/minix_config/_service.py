@@ -157,15 +157,9 @@ def _run(program: Pkg | Native, file: str, args: str) -> Run:
 
 
 def _check_main(program: Pkg | Native, file: str, field: str) -> None:
-    """009-D36: a package with no main program needs `file=`. A `Native` package always needs it."""
-    if file:
+    """009-D36: a package of the package list with no main program needs `file=`. A `Native` package may omit it."""
+    if file or isinstance(program, Native):
         return
-    if isinstance(program, Native):
-        raise PydanticCustomError(
-            "no_main_program",
-            'must name the file: file="NAME". The Native package from `{file}` has no known main program',
-            {"file": program.file},
-        )
     if not isinstance(program, Prog):
         raise PydanticCustomError(
             "no_main_program",
@@ -193,16 +187,16 @@ class Step(Part):
     """One command that runs before a service starts. The service starts when every step has succeeded."""
 
     program: Program
-    """The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`."""
+    """The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Nix finds the main program of the package (`meta.mainProgram`), so you write no path. Give `file=` when the package has no `meta.mainProgram`."""
     file: str = ""
-    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package."""
+    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required when the package has no main program."""
     args: str = ""
     """The arguments as one string, for example "-sf http://localhost:8080". Spaces split the words; quotes group them. No shell runs. A word that starts with ~/ names a path in your home."""
 
     if TYPE_CHECKING:
 
         @overload
-        def __init__(self, *, program: Prog, args: str = "") -> None: ...
+        def __init__(self, *, program: Prog | Native, args: str = "") -> None: ...
 
         @overload
         def __init__(self, *, program: Pkg | Native, file: str, args: str = "") -> None: ...
@@ -211,8 +205,8 @@ class Step(Part):
             """One command that runs before a service starts. The service starts when every step has succeeded.
 
             Args:
-                program: The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`.
-                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package.
+                program: The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Nix finds the main program of the package (`meta.mainProgram`), so you write no path. Give `file=` when the package has no `meta.mainProgram`.
+                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required when the package has no main program.
                 args: The arguments as one string, for example "-sf http://localhost:8080". No shell runs. A word that starts with ~/ names a path in your home.
             """
             ...
@@ -277,9 +271,9 @@ class Service(Component):
     name: ServiceName
     """The name of the service. Read its log with `journalctl --user -u NAME`."""
     program: Program
-    """The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`."""
+    """The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Nix finds the main program of the package (`meta.mainProgram`), so you write no path. Give `file=` when the package has no `meta.mainProgram`."""
     file: str = ""
-    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package."""
+    """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required when the package has no main program."""
     args: str = ""
     """The arguments as one string, for example "-m http.server 8080". Spaces split the words; quotes group them. No shell runs. A word that starts with ~/ names a path in your home."""
     description: Description = ""
@@ -335,7 +329,7 @@ class Service(Component):
             name: ServiceName,
             /,
             *,
-            program: Prog,
+            program: Prog | Native,
             args: str = "",
             description: Description = "",
             restart: Restart = "on-failure",
@@ -426,8 +420,8 @@ class Service(Component):
 
             Args:
                 name: The name of the service. Read its log with `journalctl --user -u NAME`.
-                program: The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Basix finds the file of `pkgs.NAME` (the main program of the package). A Native package needs `file=`.
-                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required with a Native package.
+                program: The program to run: `pkgs.NAME`, or `Native("pkg.nix", ["attr"])` for a package that a Nix file of the workspace gives. Nix finds the main program of the package (`meta.mainProgram`), so you write no path. Give `file=` when the package has no `meta.mainProgram`.
+                file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`. Required when the package has no main program.
                 args: The arguments as one string, for example "-m http.server 8080". No shell runs. A word that starts with ~/ names a path in your home.
                 description: One line of text for `systemctl --user status`. Empty means "minix service NAME".
                 restart: When systemd starts the service again, for example "on-failure" or "always".
