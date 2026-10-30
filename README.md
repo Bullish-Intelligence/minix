@@ -8,6 +8,42 @@ The workspace is `~/minix` by default. If you keep it elsewhere, set `MINIX_WORK
 
 This repository holds only the empty scaffold. The `minix` command prints its help and its version.
 
+## Run-time contracts with a Basix host
+
+minix emits Home Manager only. Basix emits NixOS only. Neither layer needs the other to build.
+At run time, a home may use a thing of a Basix host only when it skips or falls back cleanly without it.
+
+- **Linger.** The Basix core turns linger on for the account. With linger, user services and user timers run with
+  no login. Without it, they run only while the person is logged in. When linger is off, `minix apply` prints a
+  warning and names `loginctl enable-linger USER`. It still applies the home.
+- **Defaults in `/etc/xdg`.** The Basix desktop profile puts a default Hyprland file and a default Noctalia file
+  there. A file in your home wins. `Hyprland` loads `/etc/xdg/hypr/hyprland.lua` when it exists, then your settings.
+  Without it, `Hyprland` loads the base look of minix. `Noctalia` writes only the settings that you set.
+- **Firewall rules for user ports.** A home service may listen on a port. Only the system layer opens the
+  firewall for it: write a port in `system.py`. minix opens no port. Without that rule, only the machine itself
+  reaches the port. On a host with no firewall, any host may reach it.
+
+A home unit uses a system thing only behind a condition or a fallback. A failed `only_if_exists` condition skips the
+unit. It does not fail the unit.
+
+```python
+home = Home(
+    user="learner",
+    state_version="26.11",
+    services=[
+        Service(
+            "report",
+            program=pkgs.python3,
+            args="report.py",
+            only_if_exists=["/run/postgresql"],  # a system folder: the unit is skipped without it
+        ),
+    ],
+)
+```
+
+`after` and `wants` work for user units only. The user manager does not see system units. To wait for a system thing,
+use a condition or a `pre_start` step that waits with a bound.
+
 ## Develop
 
 ```bash
