@@ -17,7 +17,7 @@
     # The typed libraries, the decoder, and the engine. The tag is the future public URL (010-D8): the owner's git
     # config maps it to the local cache. `flake = false`: a consumer reads `"${pynix}/src"`.
     pynix = {
-      url = "git+https://github.com/Bullish-Intelligence/pynix?ref=refs/tags/pynix-v0.4.0";
+      url = "git+https://github.com/Bullish-Intelligence/pynix?ref=refs/tags/pynix-v0.5.0";
       flake = false;
     };
     # The Zellij of the home: pyllij is the only source of that package (`packages.<system>.zellij`). minix installs

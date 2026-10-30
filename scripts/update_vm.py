@@ -6,11 +6,11 @@ The check needs `/dev/kvm`. It never counts for green. It reuses the helpers of 
 
 The host makes a scratch channel. It never writes to a real repository and never makes a real tag:
 
-- a bare copy of `pynix`, with one more scratch tag `pynix-v0.4.0-rc.93`. The tag has the tree of `pynix-v0.4.0`,
+- a bare copy of `pynix`, with one more scratch tag `pynix-v0.5.0-rc.93`. The tag has the tree of `pynix-v0.5.0`,
   and a changelog section with one line that names `home.sessionVariables`;
 - a bare `minix` repository with two scratch releases made by `scripts/release.sh --skip-status`: `v0.3.0-rc.91` (the
   files of this checkout, so the check tests the commit under check) and `v0.3.0-rc.92` (one more commit: it pins
-  `pynix-v0.4.0-rc.93` and adds the file `~/.config/minix/release` to a home that holds the `minix` package). The branch
+  `pynix-v0.5.0-rc.93` and adds the file `~/.config/minix/release` to a home that holds the `minix` package). The branch
   `release` is at `v0.3.0-rc.92`;
 - a git config that maps the two public URLs to the scratch repositories (`insteadOf`). Only the host commands of this
   script read it, through `GIT_CONFIG_GLOBAL`. The `~/.gitconfig` of the owner is not read.
@@ -28,7 +28,7 @@ Cases (each prints `CHECK ok` or `CHECK FAIL` lines):
 - `init`: the `minix` command of `v0.3.0-rc.91` is on `PATH`; `minix init` offline writes `~/minix`; its lock holds the
   revision of `v0.3.0-rc.91` with `ref=release`.
 - `apply1`: `minix apply` builds the home of `v0.3.0-rc.91`; the file of `v0.3.0-rc.92` is not there.
-- `update`: `minix update` prints the two release names, the age of nixpkgs, the changelog line of `pynix-v0.4.0-rc.93`,
+- `update`: `minix update` prints the two release names, the age of nixpkgs, the changelog line of `pynix-v0.5.0-rc.93`,
   and the next step. The lock holds the revision of `v0.3.0-rc.92` and the nested `pynix` at `-rc.93`.
 - `apply2`: `minix apply` builds and switches; the file of `v0.3.0-rc.92` is there; a second apply changes nothing.
 - `again`: a second `minix update` says that minix is up to date and prints no `pynix` line.
@@ -83,7 +83,7 @@ GROUPS = ["init", "apply1", "update", "apply2", "again"]
 MINIX_URL = "https://github.com/Bullish-Intelligence/minix"
 PYNIX_URL = "https://github.com/Bullish-Intelligence/pynix"
 R1, R2 = "v0.3.0-rc.91", "v0.3.0-rc.92"
-PYNIX_OLD, PYNIX_NEW = "pynix-v0.4.0", "pynix-v0.4.0-rc.93"
+PYNIX_OLD, PYNIX_NEW = "pynix-v0.5.0", "pynix-v0.5.0-rc.93"
 STAMP = "2026-10-21T12:00:00+00:00"  # a fixed date: the same inputs make the same commits, so a second run finds a warm store
 MARKER = ".config/minix/release"  # the visible change of R2, in the learner's home
 # What the scratch copy of this checkout leaves out: state of tools, caches, and links of the workspace.
@@ -93,7 +93,7 @@ SKIP_TOP = {
 }  # fmt: skip
 SOURCE_PYNIX = os.environ.get("MINIX_VM_PYNIX", PYNIX_URL)
 
-# The line that the changelog of pynix-v0.4.0-rc.93 names. Its form is the form of `pynix.changelog` (a type change).
+# The line that the changelog of pynix-v0.5.0-rc.93 names. Its form is the form of `pynix.changelog` (a type change).
 CHANGE_LINE = "home.sessionVariables: attribute set of (string or signed integer) -> attribute set of string"
 SECTION = f"""## {PYNIX_NEW}
 
@@ -217,7 +217,7 @@ def prepare_repos() -> tuple[Path, Path, Path, Path]:
     FACTS["pynix_new"] = g(pynix, "rev-parse", f"{PYNIX_NEW}^{{commit}}").strip()
     tree_old = g(pynix, "rev-parse", f"{PYNIX_OLD}^{{commit}}:src").strip()
     tree_new = g(pynix, "rev-parse", f"{PYNIX_NEW}^{{commit}}:src").strip()
-    av.check("repos", "the src tree of the scratch tag equals the src tree of pynix-v0.4.0 (the pair check holds)", tree_old, tree_new)
+    av.check("repos", "the src tree of the scratch tag equals the src tree of pynix-v0.5.0 (the pair check holds)", tree_old, tree_new)
     # minix: a new repository with the files of this checkout (the commit under check), and a bare repository for the channel.
     work_minix = repos / "minix-work"
     copy_checkout(work_minix)
@@ -264,7 +264,7 @@ def make_releases(clone: Path, minix: Path, config: Path) -> None:
     # The lock names only the public URL: the channel maps it to the scratch repository while the lock is made.
     av.host(["nix", *av.FEATURES, "flake", "update", "pynix"], cwd=clone, env=channel_env(config))
     g(clone, "add", "-A")
-    g(clone, "commit", "-q", "-m", "Scratch change for opt:minix-update: pin pynix-v0.4.0-rc.93, add the release marker file")
+    g(clone, "commit", "-q", "-m", "Scratch change for opt:minix-update: pin pynix-v0.5.0-rc.93, add the release marker file")
     FACTS["r2"] = release(clone, R2, config)
     g(clone, "push", "-q", str(minix), R1, R2, f"{R2}^{{commit}}:refs/heads/release")
     FACTS["release_branch"] = g(minix, "rev-parse", "refs/heads/release").strip()
@@ -449,7 +449,7 @@ def case_init(ctx: dict) -> None:
     check("init", "the lock holds the revision of R1", FACTS["r1"], locked.get("rev"))
     check("init", "the lock follows the branch release", "release", original.get("ref"))
     check("init", "the lock names the public URL", MINIX_URL, original.get("url"))
-    check("init", "the lock holds pynix at pynix-v0.4.0", PYNIX_OLD, nested_pynix(lock)["locked"]["ref"].removeprefix("refs/tags/"))
+    check("init", "the lock holds pynix at pynix-v0.5.0", PYNIX_OLD, nested_pynix(lock)["locked"]["ref"].removeprefix("refs/tags/"))
     av.put("minix/home.py", home_py())
 
 

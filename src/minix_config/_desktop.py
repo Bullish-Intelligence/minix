@@ -19,7 +19,7 @@ import re
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Annotated, Literal
 
-from nixdantic import ConfigRef, Default, Expect, JsonValue, Model, Native, Package, PathRef, Text
+from nixdantic import ConfigRef, Default, ExeOf, Expect, JsonValue, Model, Native, Package, PathRef, Text
 from pydantic import AfterValidator, Field, StringConstraints
 from pydantic_core import PydanticCustomError
 from pynix_hm.programs.foot import Foot as HmFoot
@@ -207,7 +207,7 @@ def _default_look() -> str:
     )
 
 
-type TextPart = str | Package | ConfigRef | Native | PathRef | Text
+type TextPart = str | Package | ConfigRef | Native | PathRef | ExeOf | Text
 type FootValue = bool | int | float | str | Text | None | list[bool | int | float | str | Text | None]
 
 
