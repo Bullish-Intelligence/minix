@@ -464,3 +464,44 @@ def test_a_service_runs_a_native_package(tmp_path: Path, capsys: pytest.CaptureF
     exec_start = data["fragments"][0]["value"]["services"]["d"]["Service"]["ExecStart"]["__nixdantic_ref__"]
     assert exec_start["parts"][1] == "/bin/d"
     assert exec_start["parts"][0]["__nixdantic_ref__"] == {"kind": "native", "file": "pkg.nix", "attr": ["daemon"]}
+
+
+def test_input_built_in_a_helper_is_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Discovery reads only the `Input(...)` calls of home.py, so an `Input` from a helper gets no stub and no pair check."""
+    _lock(tmp_path)
+    (tmp_path / "_minix_input_helper.py").write_text('from minix_config import Input\nX = Input("x", "github:a/b")\n')
+    text = IMPORT + 'from _minix_input_helper import X\nhome = Home(user="a", inputs=[X])\n'
+    try:
+        out = fail(tmp_path, text, capsys)
+    finally:
+        sys.modules.pop("_minix_input_helper", None)
+    assert out == (
+        'home.py:3: the input `x` is not written as Input("x", "github:a/b", ...) in home.py. '
+        "Write the Input call in home.py with literal values."
+    )
+
+
+def test_input_written_with_another_url_is_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The name matches a call of home.py but the URL does not: the pair check read another input."""
+    _lock(tmp_path)
+    _package(tmp_path, "x", nar="sha256-AAAA")
+    (tmp_path / "_minix_input_helper.py").write_text('from minix_config import Input\nX = Input("x", "github:c/d")\n')
+    text = IMPORT + 'from _minix_input_helper import X\nInput("x", "github:a/b")\nhome = Home(user="a", inputs=[X])\n'
+    try:
+        out = fail(tmp_path, text, capsys)
+    finally:
+        sys.modules.pop("_minix_input_helper", None)
+    assert out.splitlines()[0] == (
+        'home.py:4: the input `x` is not written as Input("x", "github:c/d", ...) in home.py. '
+        "Write the Input call in home.py with literal values."
+    )
+
+
+def test_input_written_but_not_listed_is_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The reverse case, as in Basix: an `Input(...)` call that `Home(inputs=[...])` does not hold."""
+    _lock(tmp_path)
+    _package(tmp_path, "x", nar="sha256-AAAA")
+    text = IMPORT + 'Input("x", "github:a/b")\nhome = Home(user="a")\n'
+    assert (
+        fail(tmp_path, text, capsys) == "home.py:2:1: the input `x` is not in `Home(inputs=[...])`. Add it to the list."
+    )

@@ -30,8 +30,14 @@ import runpy
 import sys
 import traceback
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
+
+if TYPE_CHECKING:
+    from pynix_native import Found
+
+    from minix_config import Home
 
 
 def _positional(title: str) -> tuple[str, ...]:
@@ -391,14 +397,10 @@ def _check_inputs(source: Path, packages: Path) -> list[str]:
     return error_lines(check_pairs(found, read_lock(lock_file), packages, COMMAND))
 
 
-def _input_packages(source: Path, packages: Path) -> dict[str, str]:
+def _input_packages(found: Found, packages: Path) -> dict[str, str]:
     """The `narHash` of the package of each flake input, from `_generation.py`. `lib.home` checks it again at evaluation."""
-    from pynix_native import DiscoveryError, discover, input_package_name, read_source
+    from pynix_native import input_package_name, read_source
 
-    try:
-        found = discover(source)
-    except DiscoveryError:
-        return {}
     record: dict[str, str] = {}
     for item in found.inputs:
         have = read_source(packages / input_package_name(item.name) / "_generation.py") if item.flake else None
@@ -407,9 +409,32 @@ def _input_packages(source: Path, packages: Path) -> dict[str, str]:
     return dict(sorted(record.items()))
 
 
+def _input_lists(source: Path, home: Home, found: Found) -> list[str]:
+    """Compare `Home(inputs=[...])` with the `Input(...)` calls that discovery read from the file.
+
+    The stub, the pair check, and the input packages all come from discovery. An `Input` that only the run knows (for
+    example one built in a helper module) would get none of them. An `Input` that only discovery knows would get them
+    without a place in the home.
+    """
+    wanted = {(i.name, i.url) for i in found.inputs}
+    given = {(i.name, i.url) for i in home.inputs}
+    lines = [
+        f'{home._where}: the input `{name}` is not written as Input("{name}", "{url}", ...) in {source.name}. '
+        f"Write the Input call in {source.name} with literal values."
+        for name, url in sorted(given - wanted)
+    ]
+    listed = {name for name, _ in given}
+    lines += [
+        f"{source.name}:{i.line}:1: the input `{i.name}` is not in `Home(inputs=[...])`. Add it to the list."
+        for i in found.inputs
+        if i.name not in listed
+    ]
+    return lines
+
+
 def main(argv: list[str]) -> int:
     from nixdantic.reads import Reads
-    from pynix_native import reset_nixpkgs, set_apply_command, set_module_attr
+    from pynix_native import discover, reset_nixpkgs, set_apply_command, set_module_attr
 
     from . import _base
 
@@ -437,16 +462,20 @@ def main(argv: list[str]) -> int:
                 print(f"{source.name}: the file must set `home = Home(...)`", file=sys.stderr)
                 return 1
             compiled = home.compile()
+            found = discover(source)  # `_check_inputs` read the same file without an error
     except Exception as error:  # every learner error becomes plain lines
         for text in report(source, error):
             print(text, file=sys.stderr)
+        return 1
+    if lines := _input_lists(source, home, found):
+        print("\n".join(lines), file=sys.stderr)
         return 1
     _warnings(source)
     if lines := reads.refusals():  # a read outside the workspace (009-D45)
         print("\n".join(lines), file=sys.stderr)
         return 1
     compiled["source_sha256"] = digest
-    if records := _input_packages(source, packages):
+    if records := _input_packages(found, packages):
         compiled["input_packages"] = records
     compiled["reads"] = reads.result()
     out.write_text(json.dumps(compiled, indent=1, sort_keys=True) + "\n")
