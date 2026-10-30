@@ -5,9 +5,9 @@ from __future__ import annotations
 import inspect
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from nixdantic import Expect, JsonValue, Model, Plain, Text
+from nixdantic import Expect, Model, Plain, Text
 from pydantic import ConfigDict, PrivateAttr, StringConstraints
 from pynix_hm.systemd.user import User as HmSystemdUser
 from pynix_hm.systemd.user import User_Services_Value
@@ -78,28 +78,69 @@ def unit(
     name: str,
     exec_start: str | Text,
     restart: str,
-    working_dir: bool = False,
     *,
     environment: dict[str, str] | None = None,
     desktop: bool = False,
     restart_delay: str = "",
+    kind: str = "simple",
+    working_dir: str = "",
+    only_if_exists: list[str] | None = None,
+    only_if_glob: list[str] | None = None,
+    only_if_virtualization: str = "",
+    after: list[str] | None = None,
+    wants: list[str] | None = None,
+    pre_start: list[Text] | None = None,
+    timeout_start: str = "",
+    kill_mode: str = "control-group",
+    start_limit_interval: str = "",
+    start_limit_burst: int | None = None,
+    no_restart_on_exit: list[int] | None = None,
 ) -> Iterator[Model]:
     """The one Home Manager value of a user unit.
 
     `environment` becomes `Environment=` lines. `desktop` starts the unit with the graphical session (`PartOf`, `After`,
-    and `WantedBy` name `graphical-session.target`). `restart_delay` is `RestartSec` (009-D46).
+    and `WantedBy` name `graphical-session.target`). `restart_delay` is `RestartSec` (009-D46). The other keywords hold
+    systemd text that is ready to write (`working_dir`, the paths, and the unit names). A default or empty value writes
+    no key.
     """
     # The typed flat fields and the extra keys of one head (`Service`, `Unit`) join key by key (pynix 0.3.0).
     # Each key sits in one place only: the join keeps the extra key when both set the same leaf.
     flat: dict[str, object] = (
         {"Service_Environment": [_environment_line(k, v) for k, v in environment.items()]} if environment else {}
     )
-    service: dict[str, JsonValue] = {"Restart": restart}
-    if working_dir:
-        service["WorkingDirectory"] = "%h"
+    target = "graphical-session.target" if desktop else "default.target"
+    service: dict[str, Any] = {"Restart": restart}
     if restart_delay:
         service["RestartSec"] = restart_delay
-    target = "graphical-session.target" if desktop else "default.target"
+    if kind != "simple":
+        service["Type"] = kind
+    if working_dir:
+        service["WorkingDirectory"] = working_dir
+    if pre_start:
+        service["ExecStartPre"] = pre_start
+    if timeout_start:
+        service["TimeoutStartSec"] = timeout_start
+    if kill_mode != "control-group":
+        service["KillMode"] = kill_mode
+    if no_restart_on_exit:
+        service["RestartPreventExitStatus"] = " ".join(str(n) for n in no_restart_on_exit)
+    head: dict[str, Any] = {}
+    if desktop:
+        head["PartOf"] = [target]
+    if desktop or after:
+        head["After"] = list(dict.fromkeys([*([target] if desktop else []), *(after or [])]))
+    if wants:
+        head["Wants"] = list(dict.fromkeys(wants))
+    if only_if_exists:
+        head["ConditionPathExists"] = only_if_exists
+    if only_if_glob:
+        head["ConditionPathExistsGlob"] = only_if_glob
+    if only_if_virtualization:
+        head["ConditionVirtualization"] = only_if_virtualization
+    if start_limit_interval:
+        head["StartLimitIntervalSec"] = start_limit_interval
+    if start_limit_burst is not None:
+        head["StartLimitBurst"] = start_limit_burst
     yield HmSystemdUser(
         services={
             name: User_Services_Value(
@@ -107,7 +148,7 @@ def unit(
                 Service_ExecStart=exec_start,
                 **flat,
                 Service=service,
-                **({"Unit": {"PartOf": [target], "After": [target]}} if desktop else {}),
+                **({"Unit": head} if head else {}),
                 Install={"WantedBy": [target]},
             )
         }

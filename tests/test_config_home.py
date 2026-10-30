@@ -55,6 +55,7 @@ def test_learner_names_are_the_documented_set() -> None:
             "Package",
             "Program",
             "Service",
+            "Step",
             "TerminalWorkspace",
             "Text",
             "Theme",

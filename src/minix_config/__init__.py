@@ -20,7 +20,7 @@ from pynix_pkgs import pkgs
 from ._base import _learner_site
 from ._components import File, Files, Git, Neovim, Program, TerminalWorkspace
 from ._desktop import Colours, Foot, Hyprland, Noctalia, Theme
-from ._service import Bind, Service
+from ._service import Bind, Service, Step
 
 # The learner names only: `from minix_config import *` brings exactly these (009-D23). `Run` stays out (reserve).
 __all__ = [
@@ -43,6 +43,7 @@ __all__ = [
     "Package",
     "Program",
     "Service",
+    "Step",
     "TerminalWorkspace",
     "Text",
     "Theme",
