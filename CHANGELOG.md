@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.1
+
+```text
+minix 0.5.1 (pynix pynix-v0.7.0; nixpkgs e7439b6, 2026-10-08; Home Manager fae6e9e)
+Previous: v0.5.0. Commits since then: 4.
+- Version 0.5.1
+- Warn when the home and the system pin a Python input at different revisions
+- Pin pynix-v0.7.0
+- Test the helper NameError and failing import text
+```
+
 ## v0.5.0
 
 ```text
