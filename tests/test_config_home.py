@@ -242,3 +242,18 @@ def test_program_takes_one_package_by_position() -> None:
     )
     with pytest.raises(TypeError, match="takes 2 positional arguments"):
         Program(pkgs.ripgrep, pkgs.fd)  # ty: ignore[too-many-positional-arguments]
+
+
+def test_the_programs_error_names_every_program() -> None:
+    """The text of `Home.programs` lists each class of the `Tool` union, so a new program cannot be left out."""
+    from typing import get_args
+
+    from minix_config import Tool
+
+    classes = [c.__name__ for c in get_args(get_args(Tool)[0])]
+    assert "Zsh" in classes
+    with pytest.raises(ValidationError) as caught:
+        Home(user="a", programs=[1])  # ty: ignore[invalid-argument-type]
+    text = caught.value.errors()[0]["msg"]
+    for name in classes:
+        assert f"{name}(" in text, name
