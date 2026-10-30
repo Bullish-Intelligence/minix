@@ -16,6 +16,9 @@ The checks (the reference drvPaths come from the spikes SG35 and SG42c):
 - `pair`: a `pynix_hm` that records another Home Manager or nixpkgs stops the evaluation and names both pairs.
 - `input`: `Input(...)` on Home Manager. The typed classes of the input package and a native module give one drvPath.
 - `advanced`: `Force`, `Before`, `After`, and `Order` of `nixdantic` work inside `options=[...]` (L128).
+- `unit_hatch`: a second piece with the same unit name adds keys to the unit of a `Service` (I7). `X-SwitchMethod` joins
+  the `[Unit]` section, and `ExecStart` and `Description` stay. A second `Unit_Description` is a conflict.
+- `native_program`: `Service(program=Native(...), file=...)` runs the package that a Nix file of the workspace gives.
 - `session`: a login shell loads `hm-session-vars.sh`, so `EDITOR` is set after a login.
 - `desktop`: a home with `Hyprland`, `Noctalia`, `Foot`, and one `Theme` builds, holds the three config files and no
   Hyprland or Noctalia package, and gives the drvPath of a hand-written Home Manager module. A learner option beats
@@ -589,6 +592,65 @@ def check_advanced(tools: Tools) -> None:
     )
 
 
+HATCH_HOME = """from minix_config import *
+from pynix_hm.systemd.user import User, User_Services_Value
+
+home = Home(
+    user="learner",
+    services=[Service("d", program=pkgs.coreutils, file="sleep", args="1000")],
+    options=[User(services={"d": User_Services_Value(@EXTRA@)})],
+)
+"""
+
+
+def unit_section(unit: str, name: str) -> str:
+    """The text of one section of a unit file. Home Manager writes the sections in any order."""
+    found = re.search(rf"^\[{name}\]\n(.*?)(?=^\[|\Z)", unit, re.MULTILINE | re.DOTALL)
+    return found.group(1) if found else ""
+
+
+def check_unit_hatch(tools: Tools) -> None:
+    """I7: a second piece for the unit `d` joins the unit of the `Service`. A key that both set is a conflict."""
+    ws = tools.workspace("hatch", HATCH_HOME.replace("@EXTRA@", 'Unit_X_SwitchMethod="keep-old"'))
+    out = nix(
+        "build", "--no-link", "--print-out-paths", f"path:{ws}#homeConfigurations.learner.activationPackage", cwd=ws
+    )
+    unit = (Path(out.split()[-1]) / "home-files" / ".config" / "systemd" / "user" / "d.service").read_text()
+    say(unit.rstrip())
+    head = unit_section(unit, "Unit")
+    expect("unit_hatch: X-SwitchMethod=keep-old is in [Unit]", "X-SwitchMethod=keep-old" in head, unit)
+    expect("unit_hatch: Description=minix service d stays", "Description=minix service d\n" in head, unit)
+    expect("unit_hatch: ExecStart= stays", "ExecStart=" in unit_section(unit, "Service"), unit)
+    clash = tools.workspace("hatch-clash", HATCH_HOME.replace("@EXTRA@", 'Unit_Description="other"'))
+    text = tools.eval_error(clash)
+    expect(
+        "unit_hatch: a second Unit_Description conflicts", "conflicting definition values" in text, first_error(text)
+    )
+
+
+NATIVE_HOME = """from minix_config import *
+
+home = Home(user="learner", services=[Service("d", program=Native("pkg.nix", ["daemon"]), file="d", args="--a")])
+"""
+NATIVE_PKG = "{ pkgs, ... }: { daemon = pkgs.writeShellScriptBin \"d\" ''true''; }"
+
+
+def check_native_program(tools: Tools) -> None:
+    """A `Native` package is the `program` of a `Service`: `ExecStart` holds the store path of the package."""
+    ws = tools.workspace("native-program", NATIVE_HOME, files={"pkg.nix": NATIVE_PKG})
+    out = nix(
+        "build", "--no-link", "--print-out-paths", f"path:{ws}#homeConfigurations.learner.activationPackage", cwd=ws
+    )
+    unit = (Path(out.split()[-1]) / "home-files" / ".config" / "systemd" / "user" / "d.service").read_text()
+    say(unit.rstrip())
+    line = next((x for x in unit.splitlines() if x.startswith("ExecStart=")), "")
+    expect(
+        "native_program: ExecStart= holds the store path of the package",
+        re.fullmatch(r"ExecStart=/nix/store/[a-z0-9]{32}-d/bin/d --a", line) is not None,
+        line,
+    )
+
+
 DESKTOP_HOME = """from minix_config import *
 
 theme = Theme(accent="ff8800", colours=Colours(background="1e1e2e", foreground="cdd6f4"), font="monospace", font_size=12)
@@ -869,7 +931,11 @@ def check_zellij(tools: Tools) -> None:
     expect(f"zellij: the input pyllij holds Zellij {ZELLIJ_VERSION}", version == ZELLIJ_VERSION, version)
     config = f"path:{ws}#homeConfigurations.learner.config"
     package = nix("eval", "--raw", f"{config}.programs.zellij.package.outPath", cwd=ws).strip()
-    expect("zellij: programs.zellij.package is the Zellij of the input pyllij", package == locked, f"{package} against {locked}")
+    expect(
+        "zellij: programs.zellij.package is the Zellij of the input pyllij",
+        package == locked,
+        f"{package} against {locked}",
+    )
     packages = json.loads(
         nix("eval", "--json", f"{config}.home.packages", "--apply", "ps: map (p: p.outPath) ps", cwd=ws)
     )
@@ -988,6 +1054,8 @@ def main() -> int:
         check_input,
         check_named,
         check_advanced,
+        check_unit_hatch,
+        check_native_program,
         check_desktop,
         check_session,
         check_zellij,
