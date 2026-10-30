@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.2
+
+```text
+minix 0.4.2 (pynix pynix-v0.5.0; nixpkgs e7439b6, 2026-10-08; Home Manager fae6e9e)
+Previous: v0.4.1. Commits since then: 9.
+- Version 0.4.2
+- Fix the VM checks: copy the lock sources without a signature check
+- Let a Native program omit file=
+- Run the package of an input or a pin, not the nixpkgs package of the same name
+- Let minix update, apply, and undo run in a git worktree
+- Pin pynix-v0.5.0
+- Document Native, the unit fields, sockets, and the second piece of a unit
+- Prove that a second piece of a unit merges, and that Native runs
+- Let Service and Step run a Native package, and add three unit fields
+```
+
 ## v0.4.1
 
 ```text
