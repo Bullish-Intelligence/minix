@@ -1,6 +1,6 @@
 [project]
 name = "minix"
-version = "0.5.0"
+version = "0.5.1"
 description = "The home layer of Basix v2: one typed home.py, applied as a standalone Home Manager configuration."
 readme = "README.md"
 requires-python = ">=3.13"
