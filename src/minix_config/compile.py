@@ -11,6 +11,9 @@ JSON. An error prints one plain line that starts with `FILE:LINE:COLUMN:` and ex
 validation error (`nixdantic.Plain`, `Expect`, and the validators of `minix_config`). This file finds the place in the
 source and prints the line. It prints no Python traceback.
 
+The output holds `"input_packages"` when the file has flake inputs: the `narHash` of each input package. `lib.home` checks
+it against `flake.lock` at evaluation, so a lock that moved after the compile stops the evaluation.
+
 The generated input packages (`pynix_NAME`) and the name lists of a `NixpkgsPin` sit in `.basix/pynix` of the workspace.
 The loader puts that folder and the workspace on the search path of Python.
 """
@@ -388,6 +391,22 @@ def _check_inputs(source: Path, packages: Path) -> list[str]:
     return error_lines(check_pairs(found, read_lock(lock_file), packages, COMMAND))
 
 
+def _input_packages(source: Path, packages: Path) -> dict[str, str]:
+    """The `narHash` of the package of each flake input, from `_generation.py`. `lib.home` checks it again at evaluation."""
+    from pynix_native import DiscoveryError, discover, input_package_name, read_source
+
+    try:
+        found = discover(source)
+    except DiscoveryError:
+        return {}
+    record: dict[str, str] = {}
+    for item in found.inputs:
+        have = read_source(packages / input_package_name(item.name) / "_generation.py") if item.flake else None
+        if have and have.get("narHash"):
+            record[item.name] = have["narHash"]
+    return dict(sorted(record.items()))
+
+
 def main(argv: list[str]) -> int:
     from nixdantic.reads import Reads
     from pynix_native import reset_nixpkgs, set_apply_command, set_module_attr
@@ -427,6 +446,8 @@ def main(argv: list[str]) -> int:
         print("\n".join(lines), file=sys.stderr)
         return 1
     compiled["source_sha256"] = digest
+    if records := _input_packages(source, packages):
+        compiled["input_packages"] = records
     compiled["reads"] = reads.result()
     out.write_text(json.dumps(compiled, indent=1, sort_keys=True) + "\n")
     return 0

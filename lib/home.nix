@@ -2,9 +2,10 @@
 # The module list is the base (user, home folder, state version, no manual, the session hook), then one module per
 # fragment, then the native modules, the modules of the inputs, and `extraModules`.
 #
-# Three checks stop the evaluation with one plain line:
+# Four checks stop the evaluation with one plain line:
 #   - the guard (009-D45): `home.py` or a file that it read changed after the last compile (`guard.nix`);
 #   - the pair check (009-D28, L126): `pynix_hm` was generated from another Home Manager or nixpkgs (`pair.nix`);
+#   - the input packages (009-D48): `input_packages` of the compiled JSON names another `narHash` than `flake.lock` holds;
 #   - an input module that the stub does not carry yet.
 #
 # The decoder is the file of the locked `pynix` (`flake = false`): minix keeps no copy of it.
@@ -141,9 +142,24 @@ let
         else if !(set ? ${m})
         then throw "${i.source}: the input `${i.name}` has no homeManagerModules.${m}. It has: ${nlib.concatStringsSep ", " (builtins.attrNames set)}."
         else { _file = i.source; imports = [ set.${m} ]; };
+      # The pair check of the input packages (009-D48), again at evaluation. The compiler records the narHash of each input
+      # package (`input_packages`). It must equal the narHash of the input that this flake evaluates. Without this check,
+      # a lock that moved after the compile would evaluate the old `home.json` against the new input modules.
+      # A different generator version is no error: apply makes the package again (010-D5).
+      packageCheck = nlib.mapAttrsToList
+        (n: want:
+          let
+            have = (extraInputs.${n} or { }).narHash or null;
+            at = (nlib.findFirst (i: i.name == n) { source = "home.py"; } (data.inputs or [ ])).source;
+          in
+          if have == null || have == want then true
+          else throw "${at}: the package `pynix_${nlib.replaceStrings [ "-" ] [ "_" ] n}` was made from another version of `${n}` than flake.lock holds; run `minix apply` to make it again")
+        (data.input_packages or { });
+
       inputModules = nlib.concatMap (i: map (inputModule i) (i.modules or [ ])) (nlib.filter (i: i.flake or true) (data.inputs or [ ]));
     in
     if problem != null then throw problem else
+    assert builtins.all (x: x) packageCheck;
     {
       homeConfigurations.${data.user} = homeConfiguration {
         user = data.user;
