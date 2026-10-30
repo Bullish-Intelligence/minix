@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1
+
+```text
+minix 0.4.1 (pynix pynix-v0.4.0; nixpkgs e7439b6, 2026-10-08; Home Manager fae6e9e)
+Previous: v0.4.0. Commits since then: 3.
+- Version 0.4.1
+- Pin pynix-v0.4.0
+- Let ~/ in args name a path in the home
+```
+
 ## v0.4.0
 
 ```text
