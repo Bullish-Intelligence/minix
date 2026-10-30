@@ -23,12 +23,29 @@ class NoMainProgram(PackageError):
 _SAFE = re.compile(r"^[A-Za-z0-9_@+=:,./-]+$")
 
 
+def _is_home(word: str) -> bool:
+    """A whole word that is `~` or starts with `~/` names the home. `~user`, `a~/b`, and `--out=~/x` stay literal."""
+    return word == "~" or word.startswith("~/")
+
+
 def _systemd_word(word: str) -> str:
-    """One word of an `ExecStart` line (systemd quoting: `%` and `$` are special, a space needs quotes)."""
-    word = word.replace("%", "%%").replace("$", "$$")
-    if _SAFE.match(word):
-        return word
-    return '"' + word.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """One word of an `ExecStart` line (systemd quoting: `%` and `$` are special, a space needs quotes).
+
+    A word that names the home starts with `%h`, the home specifier of systemd.
+    """
+    head, rest = ("%h", word[1:]) if _is_home(word) else ("", word)
+    rest = rest.replace("%", "%%").replace("$", "$$")
+    if _SAFE.match(rest) or (head and not rest):
+        return head + rest
+    return '"' + head + rest.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _shell_word(word: str) -> str:
+    """One word of a shell command. A word that names the home starts with `"$HOME"`, because quotes stop the `~` expansion."""
+    if not _is_home(word):
+        return shlex.quote(word)
+    rest = word[1:]
+    return '"$HOME"' + (shlex.quote(rest) if rest else "")
 
 
 class Run(Plain):
@@ -44,7 +61,7 @@ class Run(Plain):
     file: str = ""
     """The file below `bin/`, when it is not the main program of the package."""
     args: list[str] = []
-    """The arguments, one string for each word."""
+    """The arguments, one string for each word. A word that starts with ~/ names a path in your home."""
 
     if TYPE_CHECKING:
 
@@ -53,7 +70,7 @@ class Run(Plain):
 
             Args:
                 program: The program: `pkgs.NAME`.
-                args: The arguments, one string for each word.
+                args: The arguments, one string for each word. A word that starts with ~/ names a path in your home.
             """
             ...
     else:
@@ -78,4 +95,4 @@ class Run(Plain):
 
     def shell(self) -> Text:
         """The text for a shell (Hyprland `exec_cmd`): shell quoting."""
-        return Text(*self._head(), *(" " + shlex.quote(a) for a in self.args))
+        return Text(*self._head(), *(" " + _shell_word(a) for a in self.args))

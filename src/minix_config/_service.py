@@ -175,7 +175,7 @@ class Step(Part):
     file: str = ""
     """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`."""
     args: str = ""
-    """The arguments as one string, for example "-sf http://localhost:8080". Spaces split the words; quotes group them. No shell runs."""
+    """The arguments as one string, for example "-sf http://localhost:8080". Spaces split the words; quotes group them. No shell runs. A word that starts with ~/ names a path in your home."""
 
     if TYPE_CHECKING:
 
@@ -191,7 +191,7 @@ class Step(Part):
             Args:
                 program: The program to run: `pkgs.NAME`. Basix finds its file (the main program of the package).
                 file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`.
-                args: The arguments as one string, for example "-sf http://localhost:8080". No shell runs.
+                args: The arguments as one string, for example "-sf http://localhost:8080". No shell runs. A word that starts with ~/ names a path in your home.
             """
             ...
 
@@ -259,7 +259,7 @@ class Service(Component):
     file: str = ""
     """A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`."""
     args: str = ""
-    """The arguments as one string, for example "-m http.server 8080". Spaces split the words; quotes group them. No shell runs."""
+    """The arguments as one string, for example "-m http.server 8080". Spaces split the words; quotes group them. No shell runs. A word that starts with ~/ names a path in your home."""
     restart: Restart = "on-failure"
     """When systemd starts the service again, for example "on-failure" or "always"."""
     restart_delay: RestartDelay = ""
@@ -391,7 +391,7 @@ class Service(Component):
                 name: The name of the service. Read its log with `journalctl --user -u NAME`.
                 program: The program to run: `pkgs.NAME`. Basix finds its file (the main program of the package).
                 file: A file of the package other than its main program, for example `file="sleep"` with `pkgs.coreutils`.
-                args: The arguments as one string, for example "-m http.server 8080". No shell runs.
+                args: The arguments as one string, for example "-m http.server 8080". No shell runs. A word that starts with ~/ names a path in your home.
                 restart: When systemd starts the service again, for example "on-failure" or "always".
                 restart_delay: The wait before a restart, for example "3s". Empty means the systemd default (100 ms).
                 environment: Variables that the program sees, for example {"PORT": "8080"}.
@@ -463,7 +463,7 @@ class Bind(Part):
     program: Annotated[Pkg, AfterValidator(_has_main)]
     """The program to start: `pkgs.NAME`."""
     args: str = ""
-    """The arguments as one string. A shell runs the command, so shell quoting applies."""
+    """The arguments as one string. A shell runs the command, so shell quoting applies. A word that starts with ~/ names a path in your home."""
 
     if TYPE_CHECKING:
 
@@ -474,7 +474,7 @@ class Bind(Part):
                 mods: The modifier keys, joined by '+': SUPER, SHIFT, CTRL, ALT. For example "SUPER" or "SUPER+SHIFT".
                 key: The key: a letter or digit, F1 to F24, or a name such as Return, space, Tab.
                 program: The program to start: `pkgs.NAME`.
-                args: The arguments as one string.
+                args: The arguments as one string. A shell runs the command, so shell quoting applies. A word that starts with ~/ names a path in your home.
             """
             ...
     else:

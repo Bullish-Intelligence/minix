@@ -8,7 +8,7 @@ import pytest
 from nixdantic import supplied
 from pydantic import ValidationError
 
-from minix_config import Service, Step, pkgs
+from minix_config import Bind, Service, Step, pkgs
 from minix_config import _base as base
 
 BASE = {"Description": "minix service web"}
@@ -137,6 +137,40 @@ def test_steps_become_exec_start_pre_lines_in_order() -> None:
 def test_a_step_quotes_the_percent_sign_and_the_dollar_sign() -> None:
     web = wire(make(pre_start=[Step(program=pkgs.curl, args="50% $HOME")]))
     assert parts(web["Service"]["ExecStartPre"][0])[1:] == [' "50%%"', ' "$$HOME"']
+
+
+HOME_WORDS = [
+    # (args, the words after the program in ExecStart, the words after the program in a shell)
+    ("~", [" %h"], [' "$HOME"']),
+    ("~/x", [" %h/x"], [' "$HOME"/x']),
+    ('"~/a b"', [' "%h/a b"'], [" \"$HOME\"'/a b'"]),
+    ("~/100%", [' "%h/100%%"'], [' "$HOME"/100%']),
+    ("'~/$X'", [' "%h/$$X"'], [" \"$HOME\"'/$X'"]),
+    ("~/", [" %h/"], [' "$HOME"/']),
+    ("--out=~/x", [' "--out=~/x"'], [" '--out=~/x'"]),
+    ("a~/b", [' "a~/b"'], [" 'a~/b'"]),
+    ("~user", [' "~user"'], [" '~user'"]),
+    ("~user/x", [' "~user/x"'], [" '~user/x'"]),
+    ("-o ~/x ~/y", [" -o", " %h/x", " %h/y"], [" -o", ' "$HOME"/x', ' "$HOME"/y']),
+]
+
+
+@pytest.mark.parametrize(("args", "systemd", "shell"), HOME_WORDS)
+def test_a_word_that_starts_with_tilde_slash_names_the_home_in_exec_start(
+    args: str, systemd: list[str], shell: list[str]
+) -> None:
+    exe = {"__nixdantic_ref__": {"kind": "exe", "attr": "curl"}}
+    web = wire(make(args=args, pre_start=[Step(program=pkgs.curl, args=args)]))
+    assert parts(web["Service"]["ExecStart"])[1:] == systemd
+    assert parts(web["Service"]["ExecStartPre"][0]) == [exe, *systemd]
+
+
+@pytest.mark.parametrize(("args", "systemd", "shell"), HOME_WORDS)
+def test_a_word_that_starts_with_tilde_slash_names_the_home_in_a_bind(
+    args: str, systemd: list[str], shell: list[str]
+) -> None:
+    text = Bind("SUPER", "T", program=pkgs.foot, args=args).command_text()
+    assert list(text.parts)[1:] == shell
 
 
 def test_a_step_needs_a_main_program_or_a_file() -> None:
