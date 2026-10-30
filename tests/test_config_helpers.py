@@ -92,6 +92,23 @@ def test_a_missing_import_line_in_a_helper_names_the_helper(tmp_path: Path, caps
     )
 
 
+def test_another_name_error_in_a_helper_names_the_helper(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path, "helpers/mymod.py", "value = missing\n")
+    text = IMPORT + 'from helpers import mymod\nhome = Home(user="a")\n'
+    assert fail(tmp_path, text, capsys) == (
+        "helpers/mymod.py:1:9: `missing` is not defined in helpers/mymod.py. The names you defined are: value. "
+        "(from home.py:2)"
+    )
+
+
+def test_a_failing_import_in_a_helper_names_the_helper(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path, "helpers/mymod.py", "import nonesuch_module\n")
+    text = IMPORT + 'from helpers import mymod\nhome = Home(user="a")\n'
+    assert fail(tmp_path, text, capsys) == (
+        "helpers/mymod.py:1: ModuleNotFoundError: No module named 'nonesuch_module' (from home.py:2)"
+    )
+
+
 def test_a_name_that_minix_lacks_in_home_keeps_its_text(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The failing import is in home.py itself: the text of the learner is the same as before."""
     err = fail(tmp_path, "from minix_config import Nonesuch\nhome = 1\n", capsys)
