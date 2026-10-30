@@ -17,7 +17,7 @@ from ._base import Component, Restart, ServiceName, unit
 from ._keys import Key, Mods, Part
 from ._run import Run
 
-__all__ = ["Bind", "Service", "Step"]
+__all__ = ["Bind", "Service", "Step", "Timer"]
 
 _SHELL = "|&;<>"
 _SHELLS = {"bash", "zsh", "dash", "fish"}  # a program that is a shell: its `-c` text may hold these characters
@@ -74,6 +74,18 @@ def _one_line(value: str) -> str:
     return value
 
 
+def _calendar(value: str) -> str:
+    """A calendar time for `OnCalendar`. The syntax of systemd is large, so check the shape only: one line of text."""
+    _one_line(value)
+    if not value.strip():
+        raise PydanticCustomError("calendar_empty", 'must be a calendar time such as "daily", and this value is empty')
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise PydanticCustomError(
+            "calendar_control", "must hold only printable characters, and this value holds a control character"
+        )
+    return value
+
+
 def _path_text(value: str) -> str:
     """The systemd text of a path: `~` and `~/x` become `%h` and `%h/x`, and `%` becomes `%%`. A space stays as it is."""
     _one_line(value)
@@ -122,6 +134,9 @@ ConditionPath = Annotated[
     _checked(_condition_path),
 ]
 UnitName = Annotated[str, Expect('a unit name such as "db" or "network.target"'), _checked(_unit_name)]
+Calendar = Annotated[
+    str, Expect('a calendar time such as "daily", "hourly", or "Mon *-*-* 09:00"'), AfterValidator(_calendar)
+]
 
 
 def _run(program: Pkg, file: str, args: str) -> Run:
@@ -194,6 +209,45 @@ class Step(Part):
         return _run(self.program, self.file, self.args).systemd()
 
 
+class Timer(Part):
+    """A calendar rule that starts a service, for example `Timer("daily")`. Without linger, a user timer runs only while you are logged in. A Basix host turns linger on, and `minix apply` warns when it is off."""
+
+    _positional: ClassVar[tuple[str, ...]] = ("on_calendar",)
+    on_calendar: Calendar
+    """When the timer starts the service, as a systemd calendar time on one line, for example "daily", "hourly", or "Mon *-*-* 09:00"."""
+    persistent: bool = True
+    """Run a start that was missed while the machine was off, at the next chance. False skips a missed start."""
+    randomized_delay: LimitTime = ""
+    """A random wait of up to this time before each start, for example "30min". Empty means no wait."""
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self, on_calendar: Calendar, /, *, persistent: bool = True, randomized_delay: LimitTime = ""
+        ) -> None:
+            """A calendar rule that starts a service, for example `Timer("daily")`. Without linger, a user timer runs only while you are logged in. A Basix host turns linger on, and `minix apply` warns when it is off.
+
+            Args:
+                on_calendar: When the timer starts the service, as a systemd calendar time on one line, for example "daily", "hourly", or "Mon *-*-* 09:00".
+                persistent: Run a start that was missed while the machine was off, at the next chance. False skips a missed start.
+                randomized_delay: A random wait of up to this time before each start, for example "30min". Empty means no wait.
+            """
+            ...
+    else:
+
+        def __init__(self, on_calendar, /, **data):
+            super().__init__(on_calendar=on_calendar, **data)
+
+        __init__.__pydantic_base_init__ = True
+
+    def section(self) -> dict[str, bool | str]:
+        """The keys of the `[Timer]` section."""
+        keys: dict[str, bool | str] = {"OnCalendar": self.on_calendar, "Persistent": self.persistent}
+        if self.randomized_delay:
+            keys["RandomizedDelaySec"] = self.randomized_delay
+        return keys
+
+
 class Service(Component):
     """A service that runs in your account: it starts at login and restarts by the rule `restart`."""
 
@@ -242,6 +296,8 @@ class Service(Component):
     """The most starts in the window of `start_limit_interval`, for example 5. More starts stop the service. None means the systemd default."""
     no_restart_on_exit: list[ExitStatus] = []
     """Exit codes after which systemd does not restart the service, for example [75, 76]."""
+    timer: Timer | None = None
+    """A calendar rule that starts the service, for example `Timer("daily")`. The timer starts the service, so it does not start at login. Without linger, a user timer runs only while you are logged in. A Basix host turns linger on, and `minix apply` warns when it is off. Example: `Service("backup", program=pkgs.restic, args="backup notes", working_dir="~", type="oneshot", timer=Timer("daily"))`. Not with `starts_with="desktop"`."""
 
     if TYPE_CHECKING:
 
@@ -270,6 +326,7 @@ class Service(Component):
             start_limit_interval: LimitTime = "",
             start_limit_burst: LimitBurst | None = None,
             no_restart_on_exit: list[ExitStatus] = [],
+            timer: Timer | None = None,
         ) -> None: ...
 
         @overload
@@ -298,6 +355,7 @@ class Service(Component):
             start_limit_interval: LimitTime = "",
             start_limit_burst: LimitBurst | None = None,
             no_restart_on_exit: list[ExitStatus] = [],
+            timer: Timer | None = None,
         ) -> None: ...
 
         def __init__(
@@ -325,6 +383,7 @@ class Service(Component):
             start_limit_interval="",
             start_limit_burst=None,
             no_restart_on_exit=[],
+            timer=None,
         ) -> None:
             """A service that runs in your account: it starts at login and restarts by the rule `restart`.
 
@@ -350,12 +409,18 @@ class Service(Component):
                 start_limit_interval: The time window of `start_limit_burst`, for example "60s". Empty means the systemd default.
                 start_limit_burst: The most starts in the window of `start_limit_interval`, for example 5. More starts stop the service. None means the systemd default.
                 no_restart_on_exit: Exit codes after which systemd does not restart the service, for example [75, 76].
+                timer: A calendar rule that starts the service, for example `Timer("daily")`. The timer starts the service, so it does not start at login. Without linger, a user timer runs only while you are logged in. A Basix host turns linger on, and `minix apply` warns when it is off. Example: `Service("backup", program=pkgs.restic, args="backup notes", working_dir="~", type="oneshot", timer=Timer("daily"))`. Not with `starts_with="desktop"`.
             """
             ...
 
     @model_validator(mode="after")
     def _main(self) -> Service:
         _check_main(self.program, self.file, "Service")
+        if self.timer is not None and self.starts_with == "desktop":
+            raise PydanticCustomError(
+                "timer_desktop",
+                'cannot have a timer with starts_with="desktop": the timer starts the service. Keep one of the two',
+            )
         return self
 
     def model_post_init(self, context: object, /) -> None:
@@ -383,6 +448,7 @@ class Service(Component):
             start_limit_interval=self.start_limit_interval,
             start_limit_burst=self.start_limit_burst,
             no_restart_on_exit=self.no_restart_on_exit,
+            timer=self.timer.section() if self.timer else None,
         )
 
 

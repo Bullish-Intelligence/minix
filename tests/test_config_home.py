@@ -59,6 +59,7 @@ def test_learner_names_are_the_documented_set() -> None:
             "TerminalWorkspace",
             "Text",
             "Theme",
+            "Timer",
             "hm",
             "pkgs",
         ]

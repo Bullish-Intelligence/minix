@@ -10,6 +10,7 @@ from typing import Annotated, Any, ClassVar
 from nixdantic import Expect, Model, Plain, Text
 from pydantic import ConfigDict, PrivateAttr, StringConstraints
 from pynix_hm.systemd.user import User as HmSystemdUser
+from pynix_hm.systemd.user import User_Automounts_Value as User_Timers_Value  # Home Manager shares one class for them
 from pynix_hm.systemd.user import User_Services_Value
 
 _HERE = Path(__file__).resolve().parent
@@ -95,13 +96,15 @@ def unit(
     start_limit_interval: str = "",
     start_limit_burst: int | None = None,
     no_restart_on_exit: list[int] | None = None,
+    timer: dict[str, Any] | None = None,
 ) -> Iterator[Model]:
     """The one Home Manager value of a user unit.
 
     `environment` becomes `Environment=` lines. `desktop` starts the unit with the graphical session (`PartOf`, `After`,
     and `WantedBy` name `graphical-session.target`). `restart_delay` is `RestartSec` (009-D46). The other keywords hold
     systemd text that is ready to write (`working_dir`, the paths, and the unit names). A default or empty value writes
-    no key.
+    no key. `timer` holds the keys of a `[Timer]` section: the value then also holds a timer unit of the same name, and
+    the timer (not the service) is wanted by `timers.target`.
     """
     # The typed flat fields and the extra keys of one head (`Service`, `Unit`) join key by key (pynix 0.3.0).
     # Each key sits in one place only: the join keeps the extra key when both set the same leaf.
@@ -141,6 +144,7 @@ def unit(
         head["StartLimitIntervalSec"] = start_limit_interval
     if start_limit_burst is not None:
         head["StartLimitBurst"] = start_limit_burst
+    # The service and its timer are two keys of one value: `services` and `timers` of the same head.
     yield HmSystemdUser(
         services={
             name: User_Services_Value(
@@ -149,9 +153,20 @@ def unit(
                 **flat,
                 Service=service,
                 **({"Unit": head} if head else {}),
-                Install={"WantedBy": [target]},
+                **({} if timer else {"Install": {"WantedBy": [target]}}),
             )
-        }
+        },
+        **(
+            {
+                "timers": {
+                    name: User_Timers_Value(
+                        Unit_Description=f"minix timer {name}", Timer=timer, Install={"WantedBy": ["timers.target"]}
+                    )
+                }
+            }
+            if timer
+            else {}
+        ),
     )
 
 
