@@ -188,7 +188,7 @@ def test_unknown_name_suggests_close_name(tmp_path: Path, capsys: pytest.Capture
     err = fail(tmp_path, IMPORT + 'home = Home(user="a", programs=[Gitt(name="a", email="a@example.org")])\n', capsys)
     assert err.startswith("home.py:2:33: `Gitt` is not a minix name. Did you mean `Git`? The names are: ")
     # The learner names only: no reference class and no helper (009-D23).
-    assert "Text" not in err and "ConfigRef" not in err and "OWN" not in err
+    assert "Text," not in err and "ConfigRef" not in err and "OWN" not in err
 
 
 def test_missing_import_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

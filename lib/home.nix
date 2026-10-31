@@ -34,7 +34,7 @@ let
 
   # The base of every home. Python and native homes share it, so the difference is only what the learner sets.
   # Every value that a home may change is `mkDefault` (009-D39). The user name stays plain: it is the key of the home.
-  base = user: system: { config, lib, ... }: {
+  base = user: system: builds: activations: { config, lib, ... }: {
     options.minix = {
       pythonPath = lib.mkOption {
         type = lib.types.str;
@@ -56,9 +56,26 @@ let
         defaultText = lib.literalMD "`packages.zellij` of the input `pyllij` of the flake of minix";
         description = "The Zellij of the component TerminalWorkspace. pyllij defines and measures it; minix installs it unchanged.";
       };
+      builds = lib.mkOption {
+        type = lib.types.attrsOf lib.types.anything;
+        internal = true;
+        readOnly = true;
+        description = "Packages built from Python uv.lock declarations.";
+      };
     };
     config = {
       minix.pythonPath = pythonPath;
+      minix.builds = builds;
+      home.activation = lib.listToAttrs (map (action:
+        let
+          packageMarkers = builtins.attrNames action.package_paths;
+          buildMarkers = builtins.attrNames action.build_paths;
+          packageValues = map (marker: toString (lib.getAttrFromPath
+            (lib.splitString "." action.package_paths.${marker}) (pkgsFor system))) packageMarkers;
+          buildValues = map (marker: toString builds.${action.build_paths.${marker}}.path) buildMarkers;
+          script = builtins.replaceStrings (packageMarkers ++ buildMarkers)
+            (packageValues ++ buildValues) action.script;
+        in lib.nameValuePair action.name (lib.hm.dag.entryAfter action.after script)) activations);
       # The command of the home (L113, 010-D21): the home holds the `minix` of its own lock. The user profile comes
       # before `/run/current-system/sw` on `PATH`, so after the first `minix apply` this command takes over from the
       # launcher of the machine.
@@ -77,12 +94,12 @@ let
     };
   };
 
-  homeConfiguration = { user, modules, system ? defaultSystem, extraSpecialArgs ? { } }:
+  homeConfiguration = { user, modules, system ? defaultSystem, builds ? { }, activations ? [ ], extraSpecialArgs ? { } }:
     if pairProblem != null then throw pairProblem else
     inputs.home-manager.lib.homeManagerConfiguration {
       pkgs = pkgsFor system;
       inherit extraSpecialArgs;
-      modules = [ (base user system) ] ++ modules;
+      modules = [ (base user system builds activations) ] ++ modules;
     };
 
   # The packages of the extra inputs, as typed Python classes (`pynix_NAME`, 009-D47). `extraInputs` is what the stub
@@ -123,6 +140,76 @@ let
       data = builtins.fromJSON (builtins.readFile compiled);
       theSystem = if system != null then system else data.system or defaultSystem;
       decode = fragment: decodeFragment { inherit fragment nativeRoot; };
+
+      uvBuild = build:
+        let
+          pkgs = pkgsFor theSystem;
+          inherit (pkgs) lib;
+          source = extraInputs.${build.input};
+          workspace = inputs.uv2nix.lib.workspace.loadWorkspace { workspaceRoot = source; };
+          pythonSet =
+            (pkgs.callPackage inputs.pyproject-nix.build.packages { python = pkgs.${build.python}; }).overrideScope (
+              lib.composeManyExtensions [
+                inputs.pyproject-build-systems.overlays.wheel
+                (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
+                (final: prev:
+                  lib.genAttrs build.hatchling (name:
+                    prev.${name}.overrideAttrs (old: {
+                      nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem { hatchling = [ ]; };
+                    })))
+              ]
+            );
+          environment = pythonSet.mkVirtualEnv "${build.name}-env" workspace.deps.default;
+          command = pkgs.runCommand "${build.name}-command" { meta.mainProgram = build.command; } ''
+            mkdir -p "$out/bin"
+            ln -s ${environment}/bin/${build.command} "$out/bin/${build.command}"
+          '';
+        in { inherit environment command; commandList = [ command ]; };
+      textFileBuild = build:
+        let
+          package = (pkgsFor theSystem).writeTextFile {
+            inherit (build) name destination text;
+          };
+        in { command = package; commandList = [ package ]; };
+      fetchUrlBuild = build:
+        let path = (pkgsFor theSystem).fetchurl { inherit (build) name url hash; };
+        in { inherit path; };
+      writeTextBuild = build:
+        let path = (pkgsFor theSystem).writeText build.name build.text;
+        in { inherit path; };
+      replaceTextBuild = build:
+        let path = (pkgsFor theSystem).writeText build.name
+          (builtins.replaceStrings [ build.marker ] [ (toString builds.${build.replacement}.path) ] build.text);
+        in { inherit path; };
+      flakePackageBuild = build:
+        let path = extraInputs.${build.input}.packages.${theSystem}.${build.attr};
+        in { inherit path; commandList = [ path ]; };
+      inputSourceBuild = build:
+        let path = extraInputs.${build.input};
+        in { inherit path; };
+      shellApplicationBuild = build:
+        let
+          pkgs = pkgsFor theSystem;
+          packageMarkers = builtins.attrNames build.package_paths;
+          buildMarkers = builtins.attrNames build.build_paths;
+          packageValues = map (marker: toString (nlib.getAttrFromPath
+            (nlib.splitString "." build.package_paths.${marker}) pkgs)) packageMarkers;
+          buildValues = map (marker: toString builds.${build.build_paths.${marker}}.path) buildMarkers;
+          text = builtins.replaceStrings (packageMarkers ++ buildMarkers)
+            (packageValues ++ buildValues) build.text;
+          runtimeInputs = map (attr: nlib.getAttrFromPath (nlib.splitString "." attr) pkgs) build.runtime_inputs;
+          path = pkgs.writeShellApplication { inherit (build) name; inherit text runtimeInputs; };
+        in { inherit path; commandList = [ path ]; };
+      builds = nlib.listToAttrs (map (build: nlib.nameValuePair build.name
+        (if build.kind == "uv-lock" then uvBuild build else if build.kind == "text-file" then textFileBuild build
+         else if build.kind == "fetch-url" then fetchUrlBuild build
+         else if build.kind == "write-text" then writeTextBuild build
+         else if build.kind == "replace-text" then replaceTextBuild build
+         else if build.kind == "flake-package" then flakePackageBuild build
+         else if build.kind == "input-source" then inputSourceBuild build
+         else if build.kind == "shell-application" then shellApplicationBuild build
+         else throw "Unknown minix build kind: ${build.kind}")) (data.builds or [ ]));
+      activations = data.activations or [ ];
 
       problem = guard { inherit data source; name = "home.py"; command = "minix apply"; };
 
@@ -166,6 +253,8 @@ let
       homeConfigurations.${data.user} = homeConfiguration {
         user = data.user;
         system = theSystem;
+        inherit builds;
+        inherit activations;
         modules = map decode data.fragments
           ++ map (n: { _file = n.source; imports = [ (place n) ]; }) (data.modules or [ ])
           ++ inputModules

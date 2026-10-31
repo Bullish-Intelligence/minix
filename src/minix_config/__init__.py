@@ -18,6 +18,17 @@ from pynix_native import OWN, Input, NativeModule, NixpkgsPin, input_json, regis
 from pynix_pkgs import pkgs
 
 from ._base import _learner_site
+from ._build import (
+    ActivationAfter,
+    FetchUrlBuild,
+    FlakePackageBuild,
+    InputSourceBuild,
+    ReplaceTextBuild,
+    ShellApplicationBuild,
+    TextFileBuild,
+    UvLockBuild,
+    WriteTextBuild,
+)
 from ._components import File, Files, Git, Neovim, Program, TerminalWorkspace, Zsh
 from ._desktop import Colours, Foot, Hyprland, Noctalia, Theme
 from ._service import Bind, Service, Step, Timer
@@ -25,16 +36,20 @@ from ._service import Bind, Service, Step, Timer
 # The learner names only: `from minix_config import *` brings exactly these (009-D23). `Run` stays out (reserve).
 __all__ = [
     "OWN",
+    "ActivationAfter",
     "Bind",
     "Colours",
     "ConfigRef",
     "File",
+    "FetchUrlBuild",
+    "FlakePackageBuild",
     "Files",
     "Foot",
     "Git",
     "Home",
     "Hyprland",
     "Input",
+    "InputSourceBuild",
     "Native",
     "NativeModule",
     "Neovim",
@@ -42,12 +57,17 @@ __all__ = [
     "Noctalia",
     "Package",
     "Program",
+    "ReplaceTextBuild",
     "Service",
+    "ShellApplicationBuild",
     "Step",
     "TerminalWorkspace",
     "Text",
+    "TextFileBuild",
     "Theme",
     "Timer",
+    "UvLockBuild",
+    "WriteTextBuild",
     "Zsh",
     "hm",
     "pkgs",
@@ -155,6 +175,19 @@ class Home(Plain):
     """Extra flake inputs for the native modules, for example `Input("nirinit", "github:amaanq/nirinit")`."""
     values: dict[str, JsonValue] = {}
     """Values that a native module reads as `home.values.NAME`."""
+    builds: list[
+        UvLockBuild
+        | TextFileBuild
+        | FetchUrlBuild
+        | WriteTextBuild
+        | ReplaceTextBuild
+        | FlakePackageBuild
+        | InputSourceBuild
+        | ShellApplicationBuild
+    ] = []
+    """Builds and input references that Python configuration uses."""
+    activations: list[ActivationAfter] = []
+    """Scripts that Home Manager runs after named activation steps."""
 
     if TYPE_CHECKING:
 
@@ -170,6 +203,17 @@ class Home(Plain):
             native_modules: list[NativeModule] = [],
             inputs: list[Input] = [],
             values: dict[str, JsonValue] = {},
+            builds: list[
+                UvLockBuild
+                | TextFileBuild
+                | FetchUrlBuild
+                | WriteTextBuild
+                | ReplaceTextBuild
+                | FlakePackageBuild
+                | InputSourceBuild
+                | ShellApplicationBuild
+            ] = [],
+            activations: list[ActivationAfter] = [],
         ) -> None:
             """One home: the programs, files, and services of your account.
 
@@ -225,4 +269,8 @@ class Home(Plain):
             out["nixpkgs"] = registered_nixpkgs()  # ty: ignore[invalid-assignment]
         if self.values:
             out["values"] = dict(self.values)
+        if self.builds:
+            out["builds"] = [build.model_dump() for build in self.builds]
+        if self.activations:
+            out["activations"] = [action.model_dump() for action in self.activations]
         return out
