@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.2
+
+```text
+minix 0.5.2 (pynix pynix-v0.7.0; nixpkgs e7439b6, 2026-10-08; Home Manager fae6e9e)
+Previous: v0.5.1. Commits since then: 2.
+- Version 0.5.2
+- Verify the Hyprland config against the built home
+```
+
 ## v0.5.1
 
 ```text
