@@ -128,7 +128,8 @@ def test_apply_verifies_the_built_file_before_the_switch(setup: Setup) -> None:
     assert run_apply(setup) == 0, setup.lines
     (call,) = verify_calls(setup)
     assert call[0] == "env" and call[1].startswith("XDG_RUNTIME_DIR=")
-    assert call[2:] == ("Hyprland", "--verify-config", "-c", str(built / FILES["Hyprland"]))
+    assert call[2] == f"XDG_CONFIG_HOME={built / 'home-files/.config'}"
+    assert call[3:] == ("Hyprland", "--verify-config", "-c", str(built / FILES["Hyprland"]))
     checked, switched = setup.fake.index(*call), setup.fake.index(str(built / "activate"))
     assert checked is not None and switched is not None
     assert checked < switched
@@ -143,6 +144,47 @@ def test_the_check_runs_in_a_private_folder_that_it_removes(setup: Setup) -> Non
     runtime = Path(verify_calls(setup)[0][1].removeprefix("XDG_RUNTIME_DIR="))
     assert runtime.name.startswith("minix-hyprland-")
     assert not runtime.exists()
+
+
+def test_the_check_reads_the_config_folder_of_the_built_home(setup: Setup) -> None:
+    """The generated hyprland.lua finds its `require` modules through XDG_CONFIG_HOME: that must be the built home."""
+    built = build_with(setup, "Hyprland")
+    put_on_path(setup, "Hyprland")
+    setup.fake.on(("env",), Result(0, CONFIG_OK))
+    assert run_apply(setup) == 0, setup.lines
+    (call,) = verify_calls(setup)
+    config_home = Path(next(a for a in call if a.startswith("XDG_CONFIG_HOME=")).removeprefix("XDG_CONFIG_HOME="))
+    assert config_home == built / "home-files/.config"
+    assert (built / FILES["Hyprland"]).parent == config_home / "hypr"  # the file sits where the loader looks
+
+
+def fake_hyprland(argv: tuple[str, ...]) -> Result:
+    """Hyprland as the generated loader behaves: `require("desk_init")` is looked up in $XDG_CONFIG_HOME/hypr."""
+    config_home = Path(next(a for a in argv if a.startswith("XDG_CONFIG_HOME=")).removeprefix("XDG_CONFIG_HOME="))
+    if (config_home / "hypr" / "desk_init.lua").is_file():
+        return Result(0, CONFIG_OK)
+    file = argv[argv.index("-c") + 1]
+    return Result(1, f"======== Config parsing result:\n\n{file}:7: module 'desk_init' not found:\n")
+
+
+def test_a_module_that_only_the_built_home_holds_passes_the_check(setup: Setup) -> None:
+    """The first apply of a home that adds a Lua module: the live ~/.config has no such file yet (D20)."""
+    built = build_with(setup, "Hyprland")
+    (built / FILES["Hyprland"]).parent.joinpath("desk_init.lua").write_text("-- module\n")
+    put_on_path(setup, "Hyprland")
+    setup.fake.on(("env",), fake_hyprland)
+    assert run_apply(setup) == 0, setup.lines
+    assert setup.commits()[0] == "apply: home.json"
+
+
+def test_a_module_that_the_built_home_lacks_still_stops_the_apply(setup: Setup) -> None:
+    build_with(setup, "Hyprland")
+    put_on_path(setup, "Hyprland")
+    setup.fake.on(("env",), fake_hyprland)
+    assert run_apply(setup) == 2
+    assert setup.lines[-1].startswith(
+        "Hyprland does not accept the config: hyprland.lua:7: module 'desk_init' not found"
+    )
 
 
 def test_a_file_that_hyprland_refuses_stops_with_one_line(setup: Setup) -> None:

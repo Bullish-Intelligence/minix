@@ -29,8 +29,10 @@ class Desktop:
     config: str
 
 
-HYPRLAND = Desktop("Hyprland", "Hyprland", "home-files/.config/hypr/hyprland.lua")
-NOCTALIA = Desktop("Noctalia", "noctalia", "home-files/.config/noctalia/config.toml")
+# XDG_CONFIG_HOME of the built home: the folder that the generation holds in place of ~/.config.
+CONFIG_HOME = "home-files/.config"
+HYPRLAND = Desktop("Hyprland", "Hyprland", f"{CONFIG_HOME}/hypr/hyprland.lua")
+NOCTALIA = Desktop("Noctalia", "noctalia", f"{CONFIG_HOME}/noctalia/config.toml")
 PROGRAMS = (HYPRLAND, NOCTALIA)
 
 # The command of a Basix machine (the core carries it). A plain host does not.
@@ -63,9 +65,20 @@ def names_line(session: Session, missing: list[Desktop], env: Mapping[str, str])
 def verify_hyprland(session: Session, built: str) -> None:
     """Run `Hyprland --verify-config` on the built file. Stop with one line when Hyprland refuses the file (L28)."""
     config = Path(built) / HYPRLAND.config
+    # The generated hyprland.lua finds its `require` modules through XDG_CONFIG_HOME. Point it at the built home, not
+    # the live one: the check then reads the files as they will be once live, also on the first apply that adds modules.
+    config_home = Path(built) / CONFIG_HOME
     with tempfile.TemporaryDirectory(prefix="minix-hyprland-") as runtime:  # a private folder: no live session sees it
         result = session.run(
-            ["env", f"XDG_RUNTIME_DIR={runtime}", HYPRLAND.command, "--verify-config", "-c", str(config)]
+            [
+                "env",
+                f"XDG_RUNTIME_DIR={runtime}",
+                f"XDG_CONFIG_HOME={config_home}",
+                HYPRLAND.command,
+                "--verify-config",
+                "-c",
+                str(config),
+            ]
         )
     text = _ANSI.sub("", result.out)
     if result.code == 0:
