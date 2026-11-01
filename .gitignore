@@ -35,6 +35,7 @@ __pycache__/
 
 # Plane links (devman, linkman, gitman, jj)
 .envrc
+.loci
 .devman
 .gitman
 .worktrees
