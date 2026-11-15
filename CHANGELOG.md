@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.0
+
+```text
+minix 0.6.0 (pynix pynix-v0.7.0; nixpkgs e7439b6, 2026-10-08; Home Manager fae6e9e)
+Previous: v0.5.2. Commits since then: 3.
+- Version 0.6.0
+- Add minix compile: regenerate the generated files without a build or a switch
+- gitignore: ignore the link plane symlinks
+```
+
 - Add `minix compile`. It regenerates `home.json`, `flake.nix`, and `flake.lock` from `home.py`, and locks the inputs
   that changed. It builds no home, switches nothing, checks no service, and makes no commit. Use it in a gitman lane,
   then run `minix apply` in the main checkout.
