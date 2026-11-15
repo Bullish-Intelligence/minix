@@ -1,7 +1,5 @@
 # Changelog
 
-## Unreleased
-
 - Add `minix compile`. It regenerates `home.json`, `flake.nix`, and `flake.lock` from `home.py`, and locks the inputs
   that changed. It builds no home, switches nothing, checks no service, and makes no commit. Use it in a gitman lane,
   then run `minix apply` in the main checkout.
