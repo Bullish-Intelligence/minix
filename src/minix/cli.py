@@ -1,4 +1,4 @@
-"""The minix command-line interface: `init`, `apply`, `undo`, and `update`."""
+"""The minix command-line interface: `init`, `apply`, `compile`, `undo`, and `update`."""
 
 from pathlib import Path
 from typing import Annotated
@@ -59,6 +59,12 @@ def init_command(
 def apply_command(directory: Folder = None, verbose: Verbose = False) -> None:
     """Compile home.py, build the home, switch to it, check its services, then save the files."""
     _exit(commands.apply(commands.real_context(), directory, verbose))
+
+
+@app.command("compile")
+def compile_command(directory: Folder = None, verbose: Verbose = False) -> None:
+    """Regenerate home.json, flake.nix, and flake.lock from home.py. Build nothing, switch nothing, save nothing."""
+    _exit(commands.compile_home(commands.real_context(), directory, verbose))
 
 
 @app.command("undo")

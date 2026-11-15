@@ -1,4 +1,4 @@
-"""The four commands of `minix`: `init`, `apply`, `undo`, and `update`. Each returns the exit code.
+"""The commands of `minix`: `init`, `apply`, `compile`, `undo`, and `update`. Each returns the exit code.
 
 A command gets a `Context`: the runner, the clock, the output, the environment, and the account. The CLI builds the
 real one. The tests build one with fakes.
@@ -29,7 +29,7 @@ from pynix_engine import (
 )
 from pynix_native import DiscoveryError, discover, discover_source
 
-from minix.compile import Compiler, ensure_ignored, make_input_packages
+from minix.compile import Compiler, check_fresh, ensure_ignored, make_input_packages
 from minix.layer import ACTIVE_SYSTEM, FALLBACK_IDENTITY, minix_layer, pin_lines
 from minix.nix import NixRunner
 from minix.release import (
@@ -90,38 +90,93 @@ def real_context() -> Context:
     )
 
 
-# --- apply and undo ---------------------------------------------------------------------------------
-def workspace_layer(ctx: Context, ws: Path) -> Layer:
-    """The layer of this account, with the folder name in plain words."""
+# --- apply, compile, and undo -----------------------------------------------------------------------
+# The files that the compile step writes: `minix compile` reports which of them changed.
+GENERATED = ("home.json", "flake.nix", "flake.lock")
+
+
+def workspace_layer(ctx: Context, ws: Path, switching: bool = True) -> Layer:
+    """The layer of this account, with the folder name in plain words.
+
+    `switching` is False for `minix compile`: it never switches, so it skips the check of the user manager and the
+    rooting of the flake inputs.
+    """
     user = ctx.user
 
     def preflight(session: Session) -> None:
         ensure_ignored(session)  # before the stage step, which refuses the link in `.basix/`
-        warn_no_linger(session, user)
+        if switching:
+            warn_no_linger(session, user)
 
     return minix_layer(
         user,
         folder=tilde(ws, ctx.home),
-        compile=Compiler(user, ctx.system or host_system(), ctx.read_inputs),
+        compile=Compiler(user, ctx.system or host_system(), ctx.read_inputs, root=switching),
         preflight=preflight,
         system=ctx.active_system,
     )
 
 
+class CompileEngine(Engine):
+    """The engine with one more verb: `compile` runs the compile step of `apply` and stops there.
+
+    It reuses `Engine._run`, so it takes the same lock, opens the same log, runs the same preflight, and returns the
+    same exit codes as `apply`. The steps after the compile (build, switch, health check, save) are not in its body.
+    `Engine._run` is private. The tests of `minix compile` call it, so a pynix that renames it fails them.
+    """
+
+    def compile(self) -> int:
+        """Regenerate the generated files from the entry. Build nothing. Switch nothing. Commit nothing."""
+        return self._run(self._compile)
+
+    def _on_fail(self, session: Session) -> str:
+        return "rollback"  # nothing switches, so MINIX_ON_FAIL does not matter
+
+    def _compile(self, session: Session, on_fail: str) -> int:
+        steps.stage(session)  # the refusals run before Nix reads any file
+        before = {name: read_bytes(session.ws / name) for name in GENERATED}
+        (self.layer.compile or steps.default_compile)(session)
+        steps.stage(session)  # the flake sees tracked files only, so it must see the new generated files
+        check_fresh(session)
+        changed = [name for name in GENERATED if read_bytes(session.ws / name) != before[name]]
+        if changed:
+            session.say(session.word("compiled", changed=", ".join(changed)))
+        else:
+            session.say(session.word("compiled_same"))
+        return 0
+
+
+def read_bytes(path: Path) -> bytes | None:
+    return path.read_bytes() if path.is_file() else None
+
+
 def run_engine(ctx: Context, explicit: Path | None, verbose: bool, action: str) -> int:
     try:
         ws = find_workspace(explicit, ctx.cwd, ctx.home, ctx.env)
-        layer = workspace_layer(ctx, ws)
+        layer = workspace_layer(ctx, ws, switching=action != "compile")
     except Fail as failure:
         ctx.say(str(failure))
         return failure.code
-    engine = Engine(layer, ws, runner=ctx.nix, clock=ctx.clock, say=ctx.say, env=ctx.env, verbose=verbose)
+    engine_class = CompileEngine if action == "compile" else Engine
+    engine = engine_class(layer, ws, runner=ctx.nix, clock=ctx.clock, say=ctx.say, env=ctx.env, verbose=verbose)
+    if isinstance(engine, CompileEngine):
+        return engine.compile()
     return engine.apply() if action == "apply" else engine.undo()
 
 
 def apply(ctx: Context, directory: Path | None = None, verbose: bool = False) -> int:
     """Compile `home.py`, build the home, activate it, check it, then save the files (CONCEPT 4.1)."""
     return run_engine(ctx, directory, verbose, "apply")
+
+
+def compile_home(ctx: Context, directory: Path | None = None, verbose: bool = False) -> int:
+    """Regenerate `home.json`, `flake.nix`, and `flake.lock` from `home.py`. Build, switch, and save nothing.
+
+    It runs the compile step of `apply`, so the flake guard passes afterwards. It leaves the new files in the working
+    copy for the commit of the caller: `apply` saves a home that runs, and `compile` has not run it. A lane that
+    cannot apply uses it before verify.
+    """
+    return run_engine(ctx, directory, verbose, "compile")
 
 
 def undo(ctx: Context, directory: Path | None = None, verbose: bool = False) -> int:

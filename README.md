@@ -2,13 +2,48 @@
 
 minix is the home layer of Basix v2. One person writes a `home.py` file in typed Python, on
 generated Home Manager classes. minix compiles it to `home.json` and applies it as a standalone
-Home Manager configuration. The `minix` command has four verbs: `init`, `apply`, `undo`, and
-`update`. minix runs on any Linux host with Nix and a systemd user manager, with or without Basix.
+Home Manager configuration. The `minix` command has five verbs: `init`, `apply`, `compile`, `undo`,
+and `update`. minix runs on any Linux host with Nix and a systemd user manager, with or without Basix.
 The workspace is `~/minix` by default. If you keep it elsewhere, set `MINIX_WORKSPACE` to its folder. `minix init` makes that folder (and its parents) too.
 
-A workspace can be a git linked worktree, for example a gitman workspace. `apply`, `undo`, and `update` work in it.
+A workspace can be a git linked worktree, for example a gitman workspace. `apply`, `compile`, `undo`, and `update` work in it.
 Each worktree keeps its own log and build links in its git folder. All worktrees of one repository share one lock,
 because they change one home. A save commit goes to the HEAD of the worktree that runs the command.
+
+## Compile without applying
+
+`minix apply` makes the generated files `home.json`, `flake.nix`, and `flake.lock` from `home.py`. Then it builds the
+home, switches to it, checks the units, and saves the files in one commit. The flake guard (`lib/guard.nix`) stops an
+evaluation when `home.json` does not match `home.py`. So a check that evaluates the home fails after an edit of
+`home.py` until the generated files are new.
+
+`minix compile` makes the generated files and stops there. Use it where you must not change the live home, for example
+in a gitman lane:
+
+```bash
+minix compile            # in the lane: regenerate home.json, flake.nix, and flake.lock
+testee verify            # the evaluation passes: the guard finds fresh files
+# commit the lane, land it on main
+minix apply              # in the main checkout: build, switch, check, save
+```
+
+`minix compile` runs the compile step of `apply`, with the same refusals:
+
+- It finds the workspace like `apply`: `--dir`, else the current folder, else `$MINIX_WORKSPACE`, else `~/minix`.
+- It takes the same lock as `apply`. Only one `minix` command runs at a time for all worktrees of one repository.
+- It writes the stub `flake.nix` when the `Input` calls changed. It runs `nix flake lock` when the stub changed or no
+  `flake.lock` exists. So a new input, or an input whose URL moved, gets a new lock entry. An input that did not change
+  keeps its locked revision. A new or moved input needs the network. `minix update NAME` moves a locked revision.
+- It makes the input packages that the compiler reads, builds the compiler, and runs it.
+- It checks that `home.json` holds the digest of the current `home.py`. When it does not, `minix compile` exits with 2.
+- It never builds the activation package, never switches, never checks the units, and never runs `systemctl`.
+- It makes no commit. `apply` saves a home that runs, and `compile` has not run it. The new files stay in the working
+  copy, and `git add -A` has staged them (Nix reads tracked files only). Commit them with `home.py`.
+- It prints the generated files that changed, or says that they are current.
+- It exits with 0 when the files are new. A failure exits with 1 (another command holds the lock, or the folder is not a
+  workspace) or 2 (the compile, the lock, or a refusal stopped it). `--verbose` shows every command and its output.
+
+`minix apply` in the main checkout runs the whole sequence again, so it never trusts the files of a lane.
 
 This repository holds only the empty scaffold. The `minix` command prints its help and its version.
 

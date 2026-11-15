@@ -4,6 +4,7 @@ Git runs for real in a temporary folder, with its own identity. Nix, the compile
 fakes: the `World` answers them and keeps the state that a real machine would keep (the Home Manager profile).
 """
 
+import hashlib
 import json
 import os
 import re
@@ -117,6 +118,7 @@ class World:
     compiled_fragments: list[dict[str, object]] = field(default_factory=list)  # what the compiler writes
     compiled_inputs: list[dict[str, object]] = field(default_factory=list)  # the `inputs` that the compiler writes
     compile_error: str | None = None
+    compile_stale: bool = False  # the compiler exits 0 but writes the digest of another home.py
     compiled_user: str | None = None  # the user that the compiler writes; None: the account
     build_error: str | None = None
     activate_code: int = 0
@@ -265,11 +267,15 @@ def install_handlers(fake: FakeRunner, world: World) -> None:
     def compile_home(argv):
         if world.compile_error:
             return Result(1, world.compile_error + "\n")
+        digest = hashlib.sha256(
+            b"other" if world.compile_stale else (Path(argv[2]).parent / argv[1]).read_bytes()
+        ).hexdigest()
         Path(argv[2]).write_text(
             json.dumps(
                 {
                     "user": world.compiled_user or world.user,
                     "fragments": world.compiled_fragments,
+                    "source_sha256": digest,
                     **({"inputs": world.compiled_inputs} if world.compiled_inputs else {}),
                 }
             )

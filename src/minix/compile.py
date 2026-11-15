@@ -1,11 +1,14 @@
-"""The compile step of `minix apply` (CONCEPT 4.1, step 1; 009-D49).
+"""The compile step of `minix apply` and `minix compile` (CONCEPT 4.1, step 1; 009-D49).
 
 Order: read the `Input(...)` calls from the syntax tree of `home.py`, write the stub when they changed, lock the new
 inputs, make the input packages (every run, when the entry has inputs: 010-D13), build the compiler from the workspace
 lock, run it, check the account, and root the flake inputs. A wrong value stops here with one plain line, and nothing
 else changes.
+
+`minix compile` runs the same step, without the rooting, and then calls `check_fresh`.
 """
 
+import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -85,6 +88,22 @@ def check_account(session: Session, user: str, previous: bytes | None) -> None:
     raise stopped(session.word("wrong_account", named=named, running=user))
 
 
+def check_fresh(session: Session) -> None:
+    """Refuse a compile that left a stale `home.json`: its `source_sha256` must match `home.py`.
+
+    This is the first test of the flake guard (`lib/guard.nix`). A compile that passes it cannot trip the guard on the
+    entry. The compiler writes the file by an atomic rename, so a stale file here means a compiler that did nothing.
+    """
+    entry = session.ws / session.layer.entry
+    json_file = session.ws / session.layer.json_file
+    try:
+        recorded = json.loads(json_file.read_text()).get("source_sha256")
+    except (OSError, ValueError, AttributeError):
+        recorded = None
+    if recorded != hashlib.sha256(entry.read_bytes()).hexdigest():
+        raise stopped(session.word("compile_stale", json=session.layer.json_file))
+
+
 def root_inputs(session: Session) -> None:
     """Root the sources of all flake inputs, so that an offline apply works after a garbage collection (S16)."""
     result = session.run(["nix", "flake", "archive", "--json", "--no-write-lock-file", "--no-warn-dirty"])
@@ -113,6 +132,7 @@ class Compiler:
     user: str
     system: str
     read_inputs: Callable[..., frozenset[str] | None]  # (url, locked=lock node of the input) -> names
+    root: bool = True  # False for `minix compile`: the rooting only protects a later offline `apply`
 
     def __call__(self, session: Session) -> None:
         ws = session.ws
@@ -126,7 +146,8 @@ class Compiler:
         steps.run_compiler(session, tool)
         check_account(session, self.user, previous)
         warn_zsh_login_shell(session, self.user)
-        root_inputs(session)
+        if self.root:
+            root_inputs(session)
 
     def write_stub(self, session: Session, found: Found) -> None:
         """Write the managed stub. Lock the inputs when the stub changed or no lock exists."""

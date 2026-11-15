@@ -127,7 +127,9 @@ def test_apply_with_only_a_file_change_saves_it_and_skips_the_activation(setup: 
     assert apply(setup) == 0
     assert "the home is the same; only files changed" in setup.lines
     assert not [t for t in setup.trace() if t.startswith("activate")]
-    assert setup.commits()[0] == "apply: home.py"
+    assert (
+        setup.commits()[0] == "apply: home.json, home.py"
+    )  # the fake compiler writes the digest of home.py, as the real one does
 
 
 def test_apply_with_a_new_generation_activates_it(setup: Setup) -> None:

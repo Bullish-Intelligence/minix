@@ -42,6 +42,12 @@ class MinixWords(Words):
     """The plain lines of the engine (009-D15) and the lines that only minix prints."""
 
     lock_failed: str = "The inputs could not be locked. Nothing was built, switched, or saved.\n{detail}"
+    compile_stale: str = (
+        "The compile finished, but {json} does not match {entry}. "
+        "Nothing was built, switched, or saved. Run {name} compile again."
+    )
+    compiled: str = "compiled: {changed}. Nothing was built, switched, or saved."
+    compiled_same: str = "compiled: the generated files are current. Nothing was built, switched, or saved."
     wrong_account: str = (
         '{entry} names the account "{named}", but you are "{running}". '
         'minix changes only your own home. Set user="{running}" in {entry}.'

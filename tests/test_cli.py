@@ -1,4 +1,4 @@
-"""The command line: the four commands, their options, and the exit codes (the work itself is in `test_cmd_*`)."""
+"""The command line: the five commands, their options, and the exit codes (the work itself is in `test_cmd_*`)."""
 
 from pathlib import Path
 
@@ -11,10 +11,10 @@ from minix.cli import app
 runner = CliRunner()
 
 
-def test_help_lists_the_four_commands() -> None:
+def test_help_lists_the_five_commands() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for word in ("--version", "init", "apply", "undo", "update"):
+    for word in ("--version", "init", "apply", "compile", "undo", "update"):
         assert word in result.output
 
 
@@ -34,7 +34,7 @@ class Calls:
         self.seen: list[tuple[str, tuple[object, ...]]] = []
         self.code = code
         monkeypatch.setattr(commands, "real_context", lambda: "context")
-        for name in ("init", "apply", "undo", "update"):
+        for name in ("init", "apply", "compile_home", "undo", "update"):
             monkeypatch.setattr(commands, name, self.recorder(name))
 
     def recorder(self, name: str):
@@ -57,6 +57,18 @@ def test_apply_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls.seen == [("apply", ("context", None, False))]
 
 
+def test_compile_passes_the_folder_and_the_verbose_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = Calls(monkeypatch)
+    assert runner.invoke(app, ["compile", "--dir", "/tmp/w", "--verbose"]).exit_code == 0
+    assert calls.seen == [("compile_home", ("context", Path("/tmp/w"), True))]
+
+
+def test_compile_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = Calls(monkeypatch)
+    assert runner.invoke(app, ["compile"]).exit_code == 0
+    assert calls.seen == [("compile_home", ("context", None, False))]
+
+
 def test_undo_passes_the_folder(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = Calls(monkeypatch)
     assert runner.invoke(app, ["undo", "--dir", "/tmp/w"]).exit_code == 0
@@ -76,7 +88,7 @@ def test_update_takes_the_name_of_an_input(monkeypatch: pytest.MonkeyPatch) -> N
     assert [args[1] for _, args in calls.seen] == ["nirinit", "minix"]
 
 
-@pytest.mark.parametrize("command", ["init", "apply", "undo", "update"])
+@pytest.mark.parametrize("command", ["init", "apply", "compile", "undo", "update"])
 @pytest.mark.parametrize("code", [1, 2, 3, 4])
 def test_the_exit_code_of_a_command_is_the_exit_code_of_minix(
     monkeypatch: pytest.MonkeyPatch, command: str, code: int
