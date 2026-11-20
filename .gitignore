@@ -40,3 +40,4 @@ __pycache__/
 .gitman
 .worktrees
 .jj/
+/.workspaces/
