@@ -30,9 +30,6 @@ __pycache__/
 .agents
 .claude
 
-# Machine-local copyroom state: it holds owner paths (012-D13).
-.copyroom-local.json
-
 # Plane links (devman, linkman, gitman, jj)
 .envrc
 .loci

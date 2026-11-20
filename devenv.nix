@@ -11,7 +11,7 @@ let
   pynix = builtins.fetchTree lock.nodes.pynix.locked;
 
   # Files that no check reads: records, notes, and the release files. A change to only these reuses a verdict (Testee).
-  unread = [ "CHANGELOG.md" "provenance/**" "AGENTS.md" "CLAUDE.md" ".copyroom-local.json" ];
+  unread = [ "CHANGELOG.md" "provenance/**" "AGENTS.md" "CLAUDE.md" ".copyroom.json" ];
   # The two VM scripts are run by the `opt:*` tasks only. The required checks do not read them.
   vmScripts = [ "scripts/apply_vm.py" "scripts/update_vm.py" ];
 
@@ -50,7 +50,7 @@ in
     '';
 
     # `check_public.py` reads every tracked file, so this task ignores no tracked file.
-    "check:lint".input.testee.ignores = [ ".copyroom-local.json" ];
+    "check:lint".input.testee.ignores = [ ".copyroom.json" ];
     "check:lint".exec = ''
       set -o pipefail
       uv run --no-sync python -I scripts/check_public.py .

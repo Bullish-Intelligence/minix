@@ -91,7 +91,7 @@ MARKER = ".config/minix/release"  # the visible change of R2, in the learner's h
 # What the scratch copy of this checkout leaves out: state of tools, caches, and links of the workspace.
 SKIP_TOP = {
     ".git", ".jj", ".gitman", ".devenv", ".devenv.flake.nix", ".direnv", ".venv", ".pytest_cache", ".ruff_cache",
-    ".mypy_cache", ".testee", ".agents", ".claude", ".copyroom-local.json", "devenv.local.nix", "build", "dist", "result",
+    ".mypy_cache", ".testee", ".agents", ".claude", "devenv.local.nix", "build", "dist", "result",
 }  # fmt: skip
 SOURCE_PYNIX = os.environ.get("MINIX_VM_PYNIX", PYNIX_URL)
 
